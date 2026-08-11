@@ -15,7 +15,7 @@ paths:
 
 discord:
   token: ""
-  channel_id: 983234822594002984
+  channel_id: 
 
 reminder:
   days_before: [30, 14, 7, 1]
