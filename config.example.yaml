@@ -1,0 +1,26 @@
+auth:
+  username: __admin__
+  password: __password__
+  secret_key: change_this_secret_key
+
+server:
+  host: "0.0.0.0"
+  port: 8766
+
+database:
+  url: "sqlite:///./data/tickets.db"
+
+paths:
+  uploads: "./data/uploads"
+
+discord:
+  token: ""
+  channel_id: 983234822594002984
+
+reminder:
+  days_before: [30, 14, 7, 1]
+  run_hour: 9
+  run_minute: 0
+
+import_defaults:
+  expiry_months: 3

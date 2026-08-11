@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="theme-color" content="#0F172A" />
+  <title>票券管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
+</head>
+<body>
+  <div id="login-view" class="login-screen">
+    <div class="login-card panel">
+      <div class="login-brand">
+        <div class="login-logo" aria-hidden="true">
+          <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="4" y="10" width="40" height="28" rx="6" stroke="currentColor" stroke-width="2.5"/>
+            <path d="M16 10V38M32 10V38" stroke="currentColor" stroke-width="2" stroke-dasharray="4 3"/>
+            <circle cx="24" cy="24" r="5" fill="currentColor" opacity="0.9"/>
+          </svg>
+        </div>
+        <h1>票券管理</h1>
+        <p class="login-tagline">整理、掃描、兌換 — 一站搞定</p>
+      </div>
+      <div class="login-fields">
+        <label class="field-label" for="login-user">帳號</label>
+        <input id="login-user" type="text" placeholder="輸入帳號" autocomplete="username" />
+        <label class="field-label" for="login-pass">密碼</label>
+        <input id="login-pass" type="password" placeholder="輸入密碼" autocomplete="current-password" />
+        <button id="login-btn" type="button" class="btn-primary">登入</button>
+        <p id="login-error" class="error" role="alert"></p>
+      </div>
+    </div>
+  </div>
+
+  <div id="app-view" class="hidden">
+    <header class="app-header">
+      <div class="header-brand">
+        <div class="header-logo" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M2 9a3 3 0 0 1 3-3h14a3 3 0 0 1 3 3v6a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3V9z"/>
+            <path d="M8 6v12M16 6v12"/>
+          </svg>
+        </div>
+        <span class="header-title">票券管理</span>
+      </div>
+      <div class="toolbar-row">
+        <button type="button" id="theme-toggle" class="icon-btn" title="切換亮暗色" aria-label="切換亮暗色">
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+          </svg>
+          <svg class="icon-sun hidden" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
+          </svg>
+        </button>
+        <select id="sort-select" class="sort-select" aria-label="排序方式">
+          <option value="item" selected>依名稱</option>
+          <option value="date">依時間</option>
+        </select>
+        <button type="button" id="refresh-btn" class="btn-ghost">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg>
+          重新載入
+        </button>
+      </div>
+    </header>
+
+    <main class="app-main">
+      <section id="tab-list" class="tab-panel">
+        <div id="drawer-bar" class="drawer-bar"></div>
+        <div id="ticket-list" class="ticket-list"></div>
+        <div id="brand-pie" class="hidden"></div>
+      </section>
+
+      <section id="tab-manual" class="tab-panel hidden">
+        <h2 class="section-title">新增票券</h2>
+        <form id="manual-form" class="form-grid">
+          <label class="name-field field-block">名稱 <span class="required">*</span>
+            <input name="name" id="manual-name" required autocomplete="off" placeholder="例如：星巴克買一送一" />
+            <div id="name-suggest" class="suggest-panel hidden"></div>
+          </label>
+          <label class="field-block">大標籤
+            <input name="brand_tag" value="其他" placeholder="品牌或分類" />
+          </label>
+          <label class="field-block">條碼文字
+            <input name="barcode_text" placeholder="掃描或手動輸入條碼" />
+          </label>
+          <div class="form-row-2">
+            <label class="field-block">新增日期
+              <input name="insert_date" type="date" />
+            </label>
+            <label class="field-block">兌換期限
+              <input name="expires_at" type="date" />
+            </label>
+          </div>
+          <label class="field-block">面額
+            <input name="face_value" type="number" step="1" placeholder="選填" />
+          </label>
+          <input name="image" type="file" accept="image/*" id="manual-image" class="hidden" />
+          <label class="paste-label field-block">圖片（點擊上傳 / Ctrl+V 貼上）
+            <div id="paste-zone" tabindex="0" role="button" aria-label="上傳或貼上圖片">
+              <svg class="paste-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
+              </svg>
+              <span>點此或 Ctrl+V</span>
+            </div>
+          </label>
+          <div class="img-actions">
+            <button type="button" id="crop-btn" class="btn-secondary hidden">裁切圖片</button>
+            <button type="button" id="clear-img-btn" class="btn-secondary hidden">清除圖片</button>
+          </div>
+          <button type="submit" class="btn-primary btn-submit">新增票券</button>
+        </form>
+      </section>
+
+      <section id="tab-logs" class="tab-panel hidden">
+        <h2 class="section-title">操作紀錄</h2>
+        <div class="log-search-bar">
+          <input id="tab-log-search-input" type="search" placeholder="搜尋關鍵字…" />
+          <select id="tab-log-action-filter" aria-label="動作篩選">
+            <option value="">全部動作</option>
+            <option value="save">存入</option>
+            <option value="delete">刪除</option>
+            <option value="state">狀態變更</option>
+            <option value="import_json_commit">批次匯入</option>
+            <option value="delete_used">批次刪除</option>
+          </select>
+          <button type="button" id="tab-log-search-btn" class="btn-primary">搜尋</button>
+        </div>
+        <ul id="log-list" class="log-list"></ul>
+      </section>
+
+      <section id="tab-settings" class="tab-panel hidden">
+        <h2 class="section-title">設定</h2>
+        <div class="settings-group">
+          <h3 class="settings-label">條碼顯示</h3>
+          <div class="toggle-group">
+            <label class="toggle-pill"><input type="radio" name="bc-type" value="qrcode" checked /><span>QR Code</span></label>
+            <label class="toggle-pill"><input type="radio" name="bc-type" value="barcode" /><span>一維條碼</span></label>
+          </div>
+        </div>
+        <div class="settings-group">
+          <h3 class="settings-label">列表篩選</h3>
+          <label class="chk-card"><input id="hide-used-chk" type="checkbox" /><span>隱藏已使用票券</span></label>
+        </div>
+        <div class="settings-group">
+          <h3 class="settings-label">資料管理</h3>
+          <div class="btn-row">
+            <button type="button" id="export-btn" class="btn-secondary">匯出 JSON</button>
+            <button type="button" id="delete-used-btn" class="btn-danger">刪除已使用</button>
+          </div>
+          <p class="hint-text">刪除已使用票券時，有餘額的不會刪除</p>
+        </div>
+        <div class="settings-group import-section">
+          <h3 class="settings-label">匯入資料</h3>
+          <p class="hint-text">支援 JSON，或純文字（含中文行為標題、僅英數行為條碼）</p>
+          <textarea id="json-input" rows="8" placeholder="JSON 整包 / results 陣列&#10;&#10;或純文字格式：&#10;肯德基1顆原味蛋撻免費兌換券&#10;XXX&#10;XXX11"></textarea>
+          <input id="json-file-input" type="file" accept=".json,application/json" class="hidden" />
+          <div class="import-actions">
+            <button type="button" id="json-pick-file-btn" class="btn-secondary">選擇 JSON 檔</button>
+            <button type="button" id="json-import-btn" class="btn-secondary">預覽匯入</button>
+            <button type="button" id="json-save-all-btn" class="btn-primary hidden">全部儲存</button>
+          </div>
+          <div id="import-summary" class="import-summary"></div>
+          <div id="import-edit-table"></div>
+        </div>
+        <div class="settings-group">
+          <button type="button" id="toggle-log-search-btn" class="btn-secondary log-search-toggle">查看操作紀錄</button>
+          <div id="settings-log-panel" class="settings-log-panel hidden">
+            <div class="log-search-bar">
+              <input id="log-search-input" type="search" placeholder="搜尋關鍵字（名稱、條碼…）" />
+              <select id="log-action-filter" aria-label="動作篩選">
+                <option value="">全部動作</option>
+                <option value="save">存入</option>
+                <option value="delete">刪除</option>
+                <option value="state">狀態變更</option>
+                <option value="import_json_commit">批次匯入</option>
+                <option value="delete_used">批次刪除</option>
+              </select>
+              <button type="button" id="log-search-btn" class="btn-primary">搜尋</button>
+            </div>
+            <ul id="settings-log-list" class="log-list"></ul>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <nav class="bottom-nav" aria-label="主要導覽">
+      <button type="button" class="tab active" data-tab="list">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        <span>首頁</span>
+      </button>
+      <button type="button" class="tab" data-tab="manual">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        <span>新增</span>
+      </button>
+      <button type="button" class="tab" data-tab="logs">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <span>紀錄</span>
+      </button>
+      <button type="button" class="tab" data-tab="settings">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        <span>設定</span>
+      </button>
+    </nav>
+  </div>
+
+  <template id="ticket-row-tpl">
+    <article class="ticket-row" data-id="">
+      <div class="ticket-meta">
+        <div class="ticket-header">
+          <div class="ticket-title"></div>
+          <div class="state-badge"></div>
+        </div>
+        <div class="ticket-sub"></div>
+        <div class="ticket-amount"></div>
+      </div>
+      <div class="barcode-wrap">
+        <canvas class="bc-canvas"></canvas>
+        <div class="qr-box hidden"></div>
+        <img class="bc-image hidden" alt="barcode" />
+        <div class="bc-text"></div>
+      </div>
+      <div class="barcode-wrap barcode-wrap-2 hidden">
+        <div class="bc-label">條碼 2</div>
+        <canvas class="bc-canvas"></canvas>
+        <div class="qr-box hidden"></div>
+        <img class="bc-image hidden" alt="barcode" />
+        <div class="bc-text"></div>
+      </div>
+      <div class="numpad-host hidden"></div>
+    </article>
+  </template>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
