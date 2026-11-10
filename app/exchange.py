@@ -26,7 +26,7 @@ from urllib.parse import urlsplit, parse_qs
 
 import httpx
 from cryptography.fernet import Fernet, InvalidToken
-from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, Response as APIResponse
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field, SecretStr, ValidationError
 from sqlalchemy import Boolean, DateTime, Integer, String, Text, UniqueConstraint, select
@@ -116,7 +116,7 @@ def visible_query(db: Session):
 
 def protect_main(db: Session):
     if runtime(db).mode != "main":
-        raise HTTPException(409, "Client 模式為唯讀，請在 main server 修改票券。")
+        raise HTTPException(409, "輔助模式為唯讀，請在 Main 修改票券。")
 
 
 class ExchangeMiddleware(BaseHTTPMiddleware):
@@ -127,7 +127,7 @@ class ExchangeMiddleware(BaseHTTPMiddleware):
         ):
             with SessionLocal() as db:
                 if runtime(db).mode == "client":
-                    return JSONResponse({"detail": "Client 模式為唯讀，請到 main server 修改。"}, 409)
+                    return JSONResponse({"detail": "輔助模式為唯讀，請到 Main 修改。"}, 409)
         if not path.startswith("/api/v1/"):
             return await call_next(request)
         started = time.monotonic()
@@ -214,7 +214,9 @@ def snapshot(db: Session) -> dict:
 
 
 @router.get("/api/v1/tickets")
-def external_tickets(request: Request, grouped: bool = False, db: Session = Depends(get_db), _=Depends(shared_reader)):
+def external_tickets(request: Request, response: APIResponse, grouped: bool = False, db: Session = Depends(get_db), _=Depends(shared_reader)):
+    db.rollback()
+    response.headers['X-Ticket-Sync'] = refresh_auxiliary_on_open()
     items = ticket_items(db)
     request.state.exchange_ticket_count = len(items)
     return {"groups": group_tickets(items), "ticket_count": len(items)} if grouped else items
@@ -222,12 +224,14 @@ def external_tickets(request: Request, grouped: bool = False, db: Session = Depe
 
 @router.get("/api/v1/snapshot")
 def external_snapshot(request: Request, db: Session = Depends(get_db), _=Depends(shared_reader)):
+    db.rollback()
+    sync_status = refresh_auxiliary_on_open()
     result = snapshot(db)
     etag = '"' + result["revision"] + '"'
     if request.headers.get("if-none-match") == etag:
-        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-store"})
+        return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-store", 'X-Ticket-Sync': sync_status})
     request.state.exchange_ticket_count = result["ticket_count"]
-    return JSONResponse(result, headers={"ETag": etag, "Cache-Control": "no-store"})
+    return JSONResponse(result, headers={"ETag": etag, "Cache-Control": "no-store", 'X-Ticket-Sync': sync_status})
 
 
 @router.get("/api/v1/uploads/{filename}")
@@ -242,6 +246,8 @@ def external_image(filename: str, db: Session = Depends(get_db), _=Depends(share
 
 @router.get("/api/exchange/export")
 def export_tickets(format: Literal["json", "zip", "csv", "txt"] = "json", db: Session = Depends(get_db), _: str = Depends(get_current_user)):
+    db.rollback()
+    sync_status = refresh_auxiliary_on_open()
     result = snapshot(db)
     stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
     if format == 'txt':
@@ -272,7 +278,7 @@ def export_tickets(format: Literal["json", "zip", "csv", "txt"] = "json", db: Se
             content = output.getvalue()
             media = "application/zip"
     log_activity(db, "export", {"format": format, "tickets": result["ticket_count"], "revision": result["revision"]})
-    return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="tickets_{stamp}.{format}"', "Cache-Control": "no-store"})
+    return Response(content, media_type=media, headers={"Content-Disposition": f'attachment; filename="tickets_{stamp}.{format}"', "Cache-Control": "no-store", 'X-Ticket-Sync': sync_status})
 
 
 def ticket_text(items):
@@ -578,22 +584,23 @@ async def import_file(file: UploadFile = File(...), db: Session = Depends(get_db
     return result
 
 
-def pull_once(force=False):
-    if not pull_lock.acquire(blocking=False):
+def pull_once(force=False, on_open=False):
+    acquired = pull_lock.acquire(timeout=10) if on_open else pull_lock.acquire(blocking=False)
+    if not acquired:
         raise HTTPException(409, "已有同步工作進行中")
     try:
         with SessionLocal() as db:
             state = runtime(db)
             if state.mode != "client":
                 if force:
-                    raise HTTPException(409, "只有 client 模式可以向 main 更新")
+                    raise HTTPException(409, "只有輔助模式可以向 Main 更新")
                 return {"skipped": True}
             previous = json.loads(state.last_result) if state.last_result else {}
             if not previous.get('mirror_enabled'):
                 if force:
                     raise HTTPException(409, '請先在設定頁確認啟用強制同步；本機票券未變更')
                 return {'skipped': True}
-            if not force and state.last_attempt and (datetime.utcnow() - state.last_attempt).total_seconds() < state.interval_seconds:
+            if not force and not on_open and state.last_attempt and (datetime.utcnow() - state.last_attempt).total_seconds() < state.interval_seconds:
                 return {"skipped": True}
             state.last_attempt = datetime.utcnow()
             db.commit()
@@ -602,7 +609,8 @@ def pull_once(force=False):
                 if not credentials:
                     raise ValueError('請重新設定 Main server 帳號密碼')
                 url = (state.upstream_url or "") + "/api/v1/snapshot"
-                with httpx.Client(timeout=httpx.Timeout(30, connect=10), follow_redirects=False) as client:
+                timeout = httpx.Timeout(5, connect=3) if on_open else httpx.Timeout(30, connect=10)
+                with httpx.Client(timeout=timeout, follow_redirects=False) as client:
                     raw_token = credentials.get('read_token')
                     if not raw_token:
                         login = client.post((state.upstream_url or '') + '/api/auth/login', json=credentials)
@@ -647,6 +655,22 @@ def pull_once(force=False):
                 raise HTTPException(502, state.last_error) from exc
     finally:
         pull_lock.release()
+
+
+def refresh_auxiliary_on_open():
+    with SessionLocal() as db:
+        state = runtime(db)
+        if state.mode != 'client':
+            return 'main'
+        previous = json.loads(state.last_result) if state.last_result else {}
+        if not previous.get('mirror_enabled'):
+            return 'cached'
+    try:
+        result = pull_once(on_open=True)
+        return 'cached' if result.get('skipped') else 'updated'
+    except Exception:
+        logger.warning('Main unavailable during auxiliary open; serving retained local tickets')
+        return 'cached'
 
 
 def pull_due():

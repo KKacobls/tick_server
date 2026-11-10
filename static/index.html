@@ -172,15 +172,15 @@
         <p id="exchange-status" class="exchange-status" role="status" aria-live="polite">同步與匯出狀態</p>
         <div id="exchange-admin">
         <div class="settings-group">
-          <h3 class="settings-label">Main / Client 同步</h3>
-          <p class="hint-text">同步模式會以來源票券完整取代本機票券。每次替換前自動備份。</p>
+          <h3 class="settings-label">Main / 輔助</h3>
+          <p class="hint-text">輔助模式每次開啟向 Main 更新票券；Main 無回應時保留本機資料。</p>
           <div class="exchange-grid">
-            <label>模式<select id="server-mode"><option value="main">本機管理</option><option value="client">強制同步來源</option></select></label>
-            <label>更新間隔（秒）<input id="sync-interval" type="number" min="30" max="86400" value="60" /></label>
-            <label class="exchange-wide">來源分享網址<input id="main-server-url" type="url" placeholder="https://對方網址/share#token=…" autocomplete="off" /></label>
+            <label>模式<select id="server-mode"><option value="main">Main（預設）</option><option value="client">輔助</option></select></label>
+            <label>背景更新間隔（秒）<input id="sync-interval" type="number" min="30" max="86400" value="60" /></label>
+            <label class="exchange-wide">Main 分享網址<input id="main-server-url" type="url" placeholder="https://Main網址/share#token=…" autocomplete="off" /></label>
             <details class="exchange-wide"><summary>使用帳號密碼同步</summary><div class="exchange-grid"><label>Main 帳號<input id="main-server-username" autocomplete="off" /></label><label>Main 密碼<input id="main-server-password" type="password" autocomplete="new-password" /></label></div></details>
           </div>
-          <div class="btn-row"><button id="save-sync-btn" type="button" class="btn-primary">保存並同步</button><button id="pull-now-btn" type="button" class="btn-secondary">立即強制同步</button></div>
+          <div class="btn-row"><button id="save-sync-btn" type="button" class="btn-primary">儲存模式</button><button id="pull-now-btn" type="button" class="btn-secondary">立即向 Main 更新</button></div>
         </div>
         <section class="settings-group" id="sharing-panel">
           <h3 class="settings-label">分享票券</h3>

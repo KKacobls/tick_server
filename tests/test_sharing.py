@@ -209,6 +209,54 @@ class SharingTests(unittest.TestCase):
         with SessionLocal() as db:
             self.assertEqual(db.query(Ticket).count(), 1)
 
+    def test_main_is_default_and_never_contacts_an_upstream_on_open(self):
+        with SessionLocal() as db:
+            self.assertEqual(exchange.runtime(db).mode, 'main')
+        self.add()
+        with patch('app.exchange.httpx.Client', side_effect=AssertionError('Main must not fetch an upstream')) as upstream:
+            response = self.client.get('/api/tickets', headers=self.auth)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers['X-Ticket-Sync'], 'main')
+            upstream.assert_not_called()
+
+    def test_auxiliary_fetches_each_open_and_keeps_cache_if_main_does_not_reply(self):
+        payload = self.remote_snapshot()
+        self.configure_source()
+        original = httpx.Client
+        requests_seen = []
+        current = {'payload': payload, 'status': 200}
+
+        def source(request):
+            requests_seen.append(request)
+            if current['status'] == 'timeout':
+                raise httpx.ReadTimeout('Main is unavailable')
+            return httpx.Response(current['status'], json=current['payload'])
+
+        with patch('app.exchange.httpx.Client', side_effect=lambda **kwargs: original(transport=httpx.MockTransport(source), **kwargs)):
+            first = self.client.get('/api/tickets', headers=self.auth)
+            self.assertEqual(first.headers['X-Ticket-Sync'], 'updated')
+            self.assertEqual(first.json()[0]['id'], 101)
+            current['payload']['tickets'][0]['name'] = 'Main changed again'
+            second = self.client.get('/api/tickets', headers=self.auth)
+            self.assertEqual(second.json()[0]['name'], 'Main changed again')
+            self.assertEqual(len(requests_seen), 2, 'Opening twice must bypass the interval gate')
+            for failure in ['timeout', 401, 503]:
+                current['status'] = failure
+                response = self.client.get('/api/tickets', headers=self.auth)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.headers['X-Ticket-Sync'], 'cached')
+                self.assertEqual(response.json()[0]['name'], 'Main changed again')
+            current['status'] = 200
+            current['payload'] = {}
+            response = self.client.get('/api/tickets', headers=self.auth)
+            self.assertEqual(response.headers['X-Ticket-Sync'], 'cached')
+            self.assertEqual(len(response.json()), 1)
+            _, reader = self.share()
+            response = self.client.get('/api/v1/tickets', headers=reader)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers['X-Ticket-Sync'], 'cached')
+            self.assertEqual(len(response.json()), 1)
+
     def test_original_update_state_images_and_manual_import_still_work(self):
         item = self.add()
         key = item['id']

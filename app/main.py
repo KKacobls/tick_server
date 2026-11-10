@@ -7,7 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -126,11 +126,13 @@ def login(body: LoginRequest):
 
 @app.get("/api/tickets", response_model=list[TicketResponse])
 def list_tickets(
+    response: Response,
     q: str | None = Query(None, description="search name/brand/barcode"),
     include_hidden_used: bool = Query(True),
     db: Session = Depends(get_db),
     _: str = Depends(get_current_user),
 ):
+    response.headers['X-Ticket-Sync'] = exchange.refresh_auxiliary_on_open()
     query = exchange.visible_query(db)
     if q:
         like = f"%{q}%"

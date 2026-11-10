@@ -3,6 +3,7 @@
   const byId = (id) => document.getElementById(id);
   let serverMode = "main";
   let serverSettings = null;
+  let lastOpenSync = null;
   const status = (text, error = false) => {
     byId("exchange-status").textContent = text;
     byId("exchange-status").classList.toggle("error", error);
@@ -23,7 +24,9 @@
     const readOnly = serverMode === "client";
     document.body.classList.toggle("tickets-readonly", readOnly);
     byId("read-only-notice").classList.toggle("hidden", !readOnly);
-    byId("read-only-notice").textContent = "強制同步模式：本機票券以來源為準。";
+    byId("read-only-notice").textContent = lastOpenSync === 'cached'
+      ? '輔助：Main 暫時無法更新，顯示本機保留票券。'
+      : '輔助：每次開啟向 Main 更新票券。';
     document.querySelectorAll('#manual-form input, #manual-form button, #delete-used-btn, #json-import-btn, #json-save-all-btn, #snapshot-import-file').forEach((el) => { el.disabled = readOnly; });
     document.querySelector('.tab[data-tab="manual"]').disabled = readOnly;
     byId("pull-now-btn").disabled = serverMode !== "client";
@@ -40,7 +43,7 @@
       byId("main-server-password").placeholder = serverSettings.has_upstream_credentials ? "已保存；帳密皆留空則保持原設定" : "Main 登入密碼";
       const result = serverSettings.last_result;
       const summary = result ? `新增 ${result.created}、更新 ${result.updated}、衝突 ${result.conflicts.length}` : "尚未同步";
-      status(serverSettings.last_error || `${serverMode.toUpperCase()} · ${summary}${serverSettings.last_success ? ` · 最近成功 ${serverSettings.last_success} UTC` : ""}`, Boolean(serverSettings.last_error));
+      status(serverSettings.last_error || `${serverMode === 'main' ? 'Main' : '輔助'} · ${summary}${serverSettings.last_success ? ` · 最近成功 ${serverSettings.last_success} UTC` : ""}`, Boolean(serverSettings.last_error));
     } catch (error) { status(error.message, true); }
     applyPermissions();
   }
@@ -74,7 +77,7 @@
   byId("export-csv-btn").addEventListener("click", (event) => execute(event.currentTarget, () => exportFile("csv")));
   byId("save-sync-btn").addEventListener("click", (event) => execute(event.currentTarget, async () => {
     const replacing = byId('server-mode').value === 'client';
-    if (replacing && !confirm('本機現有票券將被來源完整取代；替換前會自動備份。確定啟用強制同步？')) return;
+    if (replacing && !confirm('輔助模式會在每次開啟時以 Main 票券完整更新本機；替換前自動備份。確定啟用？')) return;
     await api("/api/exchange/settings", { method: "PUT", body: JSON.stringify({
       mode: byId("server-mode").value, upstream_url: byId("main-server-url").value.trim(),
       upstream_username: byId("main-server-username").value.trim() || null,
@@ -84,17 +87,14 @@
     }) });
     byId("main-server-username").value = "";
     byId("main-server-password").value = "";
-    if (replacing) await api('/api/exchange/pull', { method: 'POST' });
     await initialize();
     await loadTickets(true);
-    status("伺服器模式已保存。");
+    status(lastOpenSync === 'cached' ? '模式已儲存；Main 暫時無法更新，保留本機票券。' : '模式已儲存。');
   }));
   byId("pull-now-btn").addEventListener("click", (event) => execute(event.currentTarget, async () => {
-    if (!confirm('重新以來源票券完整取代本機票券？替換前會自動備份。')) return;
-    const result = await api("/api/exchange/pull", { method: "POST" });
     await loadTickets(true);
     await initialize();
-    status(`同步完成：來源 ${result.received} 張，已替換本機 ${result.deleted || 0} 張。`);
+    status(lastOpenSync === 'cached' ? 'Main 暫時無法更新，顯示本機保留票券。' : '已向 Main 更新票券。');
   }));
   byId("snapshot-import-file").addEventListener("change", (event) => execute(byId("snapshot-import-btn"), async () => {
     const file = event.target.files?.[0];
@@ -150,7 +150,13 @@
     } else status("目前票券中沒有此條碼，請向 main server 更新後重試。", true);
   }
   window.acceptTicketScan = acceptScan;
-  window.ticketExchange = { exportFile, initialize, get readOnly() { return serverMode === "client"; } };
+  window.ticketExchange = { exportFile, initialize, get readOnly() { return serverMode === "client"; }, get isAuxiliary() { return serverMode === 'client'; } };
+  document.addEventListener('ticket-sync-status', (event) => { lastOpenSync = event.detail; applyPermissions(); });
+  function refreshOnReturn() {
+    if (token && serverMode === 'client') loadTickets(true).catch((error) => status(error.message, true));
+  }
+  window.addEventListener('pageshow', (event) => { if (event.persisted) refreshOnReturn(); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshOnReturn(); });
   document.addEventListener("ticket-auth-ready", initialize);
   if (token) initialize();
   updateArrows();

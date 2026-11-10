@@ -34,7 +34,13 @@ source['tickets'][0].update(id=101, name='來源 B 的票券', barcode_text='SOU
 
 
 class SourceHandler(BaseHTTPRequestHandler):
+    available = True
+
     def do_GET(self):
+        if not self.available:
+            self.send_response(503)
+            self.end_headers()
+            return
         if self.path != '/api/v1/snapshot' or self.headers.get('Authorization') != 'Bearer tkt_fixture_remote':
             self.send_response(401)
             self.end_headers()
@@ -106,15 +112,25 @@ try:
         page.locator('#server-mode').select_option('client')
         page.locator('#main-server-url').fill('http://127.0.0.1:7033/share#token=tkt_fixture_remote')
         page.once('dialog', lambda dialog: dialog.accept())
-        with page.expect_response(lambda response: response.url.endswith('/api/exchange/pull') and response.request.method == 'POST') as replaced:
+        with page.expect_response(lambda response: '/api/tickets?' in response.url and response.request.method == 'GET') as replaced:
             page.locator('#save-sync-btn').click()
         assert replaced.value.status == 200
         expect(page.locator('#ticket-text-export')).to_have_value('來源 B 的票券\nSOURCE_B1\nSOURCE_B2')
         with SessionLocal() as db:
             assert [(ticket.id, ticket.name) for ticket in db.query(Ticket)] == [(101, '來源 B 的票券')]
+        source['tickets'][0]['name'] = 'Main 下一次開啟的新票券'
+        page.reload()
+        page.locator('.tab[data-tab="settings"]').click()
+        expect(page.locator('#ticket-text-export')).to_have_value('Main 下一次開啟的新票券\nSOURCE_B1\nSOURCE_B2')
+        SourceHandler.available = False
+        page.reload()
+        page.locator('.tab[data-tab="settings"]').click()
+        expect(page.locator('#ticket-text-export')).to_have_value('Main 下一次開啟的新票券\nSOURCE_B1\nSOURCE_B2')
+        expect(page.locator('#read-only-notice')).to_contain_text('本機保留票券')
+        expect(page.locator('#server-mode')).to_have_value('client')
         assert not errors, errors
         browser.close()
-        print('PASS token expiry UI, decoded QR URL, phone read-only page, copy/export text, revocation, mobile 320/360/390/768, URL-only full replacement against a second HTTP server')
+        print('PASS sharing/QR/export/mobile; auxiliary refresh on every open; Main unavailable shows retained local tickets')
 finally:
     server.should_exit = True
     thread.join(3)

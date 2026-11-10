@@ -63,6 +63,8 @@ async function api(path, opts = {}) {
     const t = await res.text();
     throw new Error(t || res.statusText);
   }
+  const syncStatus = res.headers.get('X-Ticket-Sync');
+  if (syncStatus) document.dispatchEvent(new CustomEvent('ticket-sync-status', {detail: syncStatus}));
   if (res.status === 204) return null;
   return res.json();
 }

@@ -69,7 +69,8 @@
     byId('reader-text').value = [...groups].map(([name, codes]) => [name, ...codes].join('\n')).join('\n\n');
     byId('reader-text').hidden = false;
     byId('reader-actions').hidden = false;
-    status(`${items.length} 張票券 · 唯讀`);
+    const cached = response.headers.get('X-Ticket-Sync') === 'cached';
+    status(`${items.length} 張票券 · 唯讀${cached ? ' · Main 無回應，顯示本機保留票券' : ''}`);
   }
   async function run(work) {
     try { await work(); }
@@ -83,5 +84,7 @@
     status('已複製票券文字');
   }));
   for (const format of ['txt', 'json', 'zip']) byId('reader-' + format).addEventListener('click', () => run(() => download(format)));
+  window.addEventListener('pageshow', (event) => { if (event.persisted) run(load); });
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') run(load); });
   run(load);
 })();
