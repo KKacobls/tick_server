@@ -2,6 +2,12 @@
 
 FastAPI、SQLite 與手機版網頁。保留票券新增、圖片、雙條碼、狀態切換、搜尋、匯入、操作紀錄及 Discord 到期提醒。
 
+## 手機 App（Android / iOS 共用程式碼）
+
+新增 `mobile/` React Native + Expo 輔助端：手機免登入，從 Main 網頁掃描一次裝置配對 QR Code 後，可瀏覽票券、分類、修改使用狀態，並以底部「掃描」連續辨識不重複的一維條碼與 QR Code。停止後編輯名稱、分類，整批寫回 Main。7-11 商品卡自動／手動雙條碼配對；設定可選完全鏡像 Main 或只追加 Main 新票券。手機**永遠是輔助端**，不提供 Main 模式。
+
+請先更新並重新啟動主站，在原本的「設定 → 手機 App 配對」產生 QR Code；手機端安裝方式、Android APK 建置與安全注意事項請參考 [mobile/README.md](mobile/README.md)。
+
 ## 安裝與啟動
 
 需要 Python 3.11 以上。
