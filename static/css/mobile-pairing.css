@@ -1,0 +1,27 @@
+.mobile-pair-result {
+  margin-top: 12px;
+  border: 1px solid var(--border, #7b8797);
+  border-radius: 12px;
+  padding: 14px;
+  max-width: 460px;
+}
+.mobile-pair-result p { margin-top: 0; }
+#mobile-pair-qr {
+  display: inline-block;
+  padding: 12px;
+  background: white;
+  border-radius: 8px;
+  max-width: 100%;
+}
+#mobile-pair-qr img, #mobile-pair-qr canvas { display: block; max-width: 100%; }
+.mobile-device-list { display: flex; flex-direction: column; gap: 8px; }
+.mobile-device-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border, #7b8797);
+  padding: 8px;
+  border-radius: 9px;
+}
+.mobile-device-row span { overflow-wrap: anywhere; }

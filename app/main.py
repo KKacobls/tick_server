@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app import import_service
 from app import exchange
 from app import sharing
+from app import mobile, mobile_auth
 from app.auth import create_access_token, get_current_user, verify_password
 from app.config import ROOT, settings
 from app.database import Base, SessionLocal, engine, get_db
@@ -58,7 +59,7 @@ class NoCacheForStatic(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         path = request.url.path
-        if path in ("/", "/share") or path.startswith("/js/") or path.startswith("/css/") or path.startswith('/api/sharing'):
+        if path in ("/", "/share") or path.startswith("/js/") or path.startswith("/css/") or path.startswith('/api/sharing') or path.startswith('/api/mobile/'):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
         if path == "/":
@@ -70,6 +71,8 @@ app.add_middleware(NoCacheForStatic)
 app.add_middleware(exchange.ExchangeMiddleware)
 app.include_router(exchange.router)
 app.include_router(sharing.router)
+app.include_router(mobile_auth.router)
+app.include_router(mobile.router)
 
 
 def _migrate_add_missing_columns():

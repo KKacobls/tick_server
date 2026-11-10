@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "KK票券助手",
+    "slug": "tick-server-mobile",
+    "scheme": "tickserver",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "top.kkacobls.tickservermobile",
+      "infoPlist": { "NSCameraUsageDescription": "掃描票券條碼及 Main 配對 QR Code" }
+    },
+    "android": {
+      "package": "top.kkacobls.tickservermobile",
+      "permissions": ["CAMERA"]
+    },
+    "plugins": [
+      ["expo-camera", {
+        "cameraPermission": "允許 KK票券助手掃描條碼和 Main 配對 QR Code",
+        "recordAudioAndroid": false,
+        "barcodeScannerEnabled": true
+      }],
+      "expo-secure-store"
+    ]
+  }
+}

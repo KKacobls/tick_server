@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/exchange.css" />
+  <link rel="stylesheet" href="/css/mobile-pairing.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
   <script src="/js/vendor/qrcode.min.js"></script>
@@ -182,6 +183,20 @@
           </div>
           <div class="btn-row"><button id="save-sync-btn" type="button" class="btn-primary">儲存模式</button><button id="pull-now-btn" type="button" class="btn-secondary">立即向 Main 更新</button></div>
         </div>
+        <section class="settings-group" id="mobile-pair-panel">
+          <h3 class="settings-label">手機 App 配對（手機免登入）</h3>
+          <p class="hint-text">手機永遠是輔助端。先用 HTTPS 開啟此 Main 網站，建立一次性配對 QR Code；手機掃描後即可同步並上傳掃描票券。配對碼等同裝置授權，請勿轉傳。</p>
+          <div class="exchange-grid">
+            <label>裝置名稱<input id="mobile-device-name" type="text" maxlength="80" placeholder="例如：我的 Android 手機" /></label>
+          </div>
+          <button id="mobile-pair-create" type="button" class="btn-primary">產生手機配對 QR Code</button>
+          <div id="mobile-pair-result" class="mobile-pair-result hidden">
+            <p>在手機 App 的「設定 → 掃描 Main 配對碼」對準下方 QR Code。離開此頁後無法再次顯示原始權杖，如有需要請重新建立。</p>
+            <div id="mobile-pair-qr"></div>
+          </div>
+          <h4>已授權裝置</h4>
+          <div id="mobile-device-list" class="mobile-device-list">載入中…</div>
+        </section>
         <section class="settings-group" id="sharing-panel">
           <h3 class="settings-label">分享票券</h3>
           <div class="exchange-grid"><label>名稱（選填）<input id="share-name" maxlength="128" /></label><label>有效期限<input id="share-expiry" type="datetime-local" required /></label></div>
@@ -281,5 +296,6 @@
   <script src="/js/app.js"></script>
   <script src="/js/exchange.js"></script>
   <script src="/js/sharing.js"></script>
+  <script src="/js/mobile-pairing.js"></script>
 </body>
 </html>
