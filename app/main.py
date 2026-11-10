@@ -59,7 +59,7 @@ class NoCacheForStatic(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         path = request.url.path
-        if path in ("/", "/share") or path.startswith("/js/") or path.startswith("/css/") or path.startswith('/api/sharing'):
+        if path in ("/", "/share") or path.startswith("/js/") or path.startswith("/css/") or path.startswith('/api/sharing') or path.startswith('/api/mobile/'):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
         if path == "/":
