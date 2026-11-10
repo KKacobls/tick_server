@@ -49,7 +49,7 @@ MDN5959064503853
 
 ## 開發與建置
 
-需求：Node.js 22.13+、Android SDK/API 37（Android 建置）、或 macOS Xcode 26.4+（iOS 建置）。
+需求：Node.js 22.13+、Android SDK/API 36（Android 建置）、或 macOS Xcode 26.4+（iOS 建置）。
 
 ```bash
 cd mobile
