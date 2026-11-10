@@ -18,7 +18,7 @@ class AuthConfig(BaseModel):
 
 class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
-    port: int = 5000
+    port: int = 7004
 
 
 class DatabaseConfig(BaseModel):

@@ -70,6 +70,7 @@ async function api(path, opts = {}) {
 function logout() {
   token = "";
   localStorage.removeItem("ticket_token");
+  document.dispatchEvent(new Event('ticket-auth-ended'));
   document.getElementById("app-view").classList.add("hidden");
   document.getElementById("login-view").classList.remove("hidden");
 }
@@ -77,6 +78,7 @@ function logout() {
 function showApp() {
   document.getElementById("login-view").classList.add("hidden");
   document.getElementById("app-view").classList.remove("hidden");
+  document.dispatchEvent(new Event("ticket-auth-ready"));
 }
 
 function bcType() {
@@ -169,9 +171,21 @@ function renderBarcodeInto(wrap, text, imageName) {
   if (textEl) textEl.textContent = "";
 
   if (imageName && !text) {
-    img.src = `/api/uploads/${imageName}`;
-    img.classList.remove("hidden");
-    if (textEl) textEl.textContent = "(image)";
+    const prefix = "/api/uploads/";
+    fetch(prefix + encodeURIComponent(imageName), { headers: headers(false) })
+      .then((response) => {
+        if (!response.ok) throw new Error("圖片讀取失敗");
+        return response.blob();
+      })
+      .then((blob) => {
+        const url = URL.createObjectURL(blob);
+        img.onload = () => URL.revokeObjectURL(url);
+        img.onerror = () => URL.revokeObjectURL(url);
+        img.src = url;
+        img.classList.remove("hidden");
+        if (textEl) textEl.textContent = "圖片票券";
+      })
+      .catch(() => { if (textEl) textEl.textContent = "圖片讀取失敗，請重新載入"; });
     return;
   }
   if (!text) return;
@@ -295,7 +309,7 @@ function appendTicketRow(parent, t, tpl, opts = {}) {
     const prefix = total > 1 ? `[${index}/${total}] ` : "";
     titleEl.textContent = prefix + (t.barcode_text || t.name);
   } else if (showPrefix) {
-    const siblings = tickets.filter((x) => x.name === t.name);
+    const siblings = tickets.filter((x) => ticketGroupKey(x) === ticketGroupKey(t));
     const cnt = siblings.length || 1;
     const idx = siblings.findIndex((x) => x.id === t.id) + 1;
     const prefix = cnt > 1 ? `[${idx}/${cnt}] ` : "";
@@ -346,10 +360,10 @@ function appendTicketRow(parent, t, tpl, opts = {}) {
   return row;
 }
 
-function renderTitleDrawer(listEl, tpl, title, items) {
+function renderTitleDrawer(listEl, tpl, title, items, groupKey = title) {
   const drawer = document.createElement("article");
   drawer.className = "title-drawer";
-  const isOpen = expandedTitleDrawers.has(title);
+  const isOpen = expandedTitleDrawers.has(groupKey);
 
   const usedCount = items.filter((t) => t.local_state > 0).length;
   const header = document.createElement("button");
@@ -363,8 +377,8 @@ function renderTitleDrawer(listEl, tpl, title, items) {
     <span class="title-drawer-meta">${items.length} 張${usedCount ? ` · ${usedCount} 已用` : ""}</span>
   `;
   header.addEventListener("click", () => {
-    if (expandedTitleDrawers.has(title)) expandedTitleDrawers.delete(title);
-    else expandedTitleDrawers.add(title);
+    if (expandedTitleDrawers.has(groupKey)) expandedTitleDrawers.delete(groupKey);
+    else expandedTitleDrawers.add(groupKey);
     renderList();
   });
   drawer.appendChild(header);
@@ -406,7 +420,7 @@ function renderList() {
         const subText = [...sub.entries()]
           .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
           .slice(0, 5)
-          .map(([name, c]) => `${c}張\t${name}`)
+          .map(([name, c]) => `${c}張\t${escapeHtml(name)}`)
           .join("<br>");
         const card = document.createElement("article");
         card.className = "group-card group-card-clickable";
@@ -426,26 +440,30 @@ function renderList() {
 
   const list = filteredTickets();
 
-  // 依時間：解除標題抽屜，改為時間排序的平鋪列表
-  if (drawerMode.startsWith("brand:") && sortMode === "item") {
-    const byTitle = new Map();
-    list.forEach((t) => {
-      const key = t.name;
-      if (!byTitle.has(key)) byTitle.set(key, []);
-      byTitle.get(key).push(t);
-    });
-    [...byTitle.entries()]
-      .sort((a, b) => {
-        const da = ticketDateKey(sortTicketsByTime(a[1])[0]);
-        const db = ticketDateKey(sortTicketsByTime(b[1])[0]);
-        if (da !== db) return da.localeCompare(db);
-        return a[0].localeCompare(b[0]);
-      })
-      .forEach(([title, items]) => renderTitleDrawer(listEl, tpl, title, sortTicketsByTimeUsedLast(items)));
-    return;
+  const grouped = new Map();
+  for (const ticket of list) {
+    const key = ticketGroupKey(ticket);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key).push(ticket);
   }
+  const entries = [...grouped.entries()].sort((a, b) => {
+    const left = a[1][0];
+    const right = b[1][0];
+    if (sortMode === "item") {
+      const nameOrder = left.name.localeCompare(right.name);
+      if (nameOrder) return nameOrder;
+    }
+    return ticketDateKey(left).localeCompare(ticketDateKey(right)) || a[0].localeCompare(b[0]);
+  });
+  for (const [key, items] of entries) {
+    const ticket = items[0];
+    const title = ticket.name;
+    renderTitleDrawer(listEl, tpl, title, sortTicketsByTimeUsedLast(items), key);
+  }
+}
 
-  list.forEach((t) => appendTicketRow(listEl, t, tpl, { showPrefix: true }));
+function ticketGroupKey(ticket) {
+  return JSON.stringify([(ticket.name || "").normalize("NFC").trim(), ticket.face_value == null ? null : String(Number(ticket.face_value)), ticket.insert_date || null, ticket.expires_at || null, Boolean(ticket.no_expiry)]);
 }
 
 function normalizeNameForBrandView(name) {
@@ -467,7 +485,7 @@ function renderBrandPie(counts) {
     return seg;
   });
   const legend = entries
-    .map(([k, v], i) => `<div><span class="dot" style="background:${colors[i]}"></span>${k} ${v}張</div>`)
+    .map(([k, v], i) => `<div><span class="dot" style="background:${colors[i]}"></span>${escapeHtml(k)} ${v}張</div>`)
     .join("");
   host.classList.remove("hidden");
   host.innerHTML = `<div class="pie-card"><div class="pie-wrap" style="background:conic-gradient(${segs.join(
@@ -489,6 +507,7 @@ function renderDrawerBar() {
       label: `${b}${tickets.filter((t) => (t.brand_tag || "") === b).length}張`,
     })),
   ];
+  const previousScroll = host.scrollLeft;
   host.innerHTML = "";
   items.forEach((it) => {
     const b = document.createElement("button");
@@ -503,6 +522,8 @@ function renderDrawerBar() {
     });
     host.appendChild(b);
   });
+  host.scrollLeft = previousScroll;
+  document.dispatchEvent(new Event("ticket-drawers-rendered"));
 }
 
 // 搜尋 UI 已移除
@@ -525,6 +546,7 @@ function patchRowOnly(t) {
 }
 
 async function onRowClick(id) {
+  if (window.ticketExchange?.readOnly) return;
   if (inflightState.has(id)) return;
   const t = tickets.find((x) => x.id === id);
   if (!t) return;
@@ -872,44 +894,9 @@ document.getElementById("sort-select")?.addEventListener("change", (e) => {
 });
 
 function exportJson() {
-  const rows = displayOrder.map((id) => tickets.find((t) => t.id === id)).filter(Boolean);
-  const payload = {
-    rtnCode: "200",
-    rtnMsg: "export",
-    totpage: "1",
-    results: rows.map((t) => ({
-      name: t.name,
-      barcode_text: t.barcode_text,
-      barcode_text_2: t.barcode_text_2,
-      insertDate: t.insert_date,
-      expiresAt: t.expires_at,
-      noExpiry: t.no_expiry,
-      faceValue: t.face_value,
-      remainingAmount: t.remaining_amount,
-      brandTag: t.brand_tag,
-      localState: t.local_state,
-    })),
-  };
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `tickets_${todayIso()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-
-  const counts = new Map();
-  rows.forEach((t) => {
-    const key = t.brand_tag || "其他";
-    counts.set(key, (counts.get(key) || 0) + 1);
+  window.ticketExchange?.exportFile("json").catch((error) => {
+    document.getElementById("exchange-status").textContent = error.message;
   });
-  const breakdown = [...counts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([k, c]) => `${k} ${c}筆`)
-    .join("、");
-  document.getElementById("import-summary").textContent = `已匯出全部 ${rows.length} 筆：${breakdown}`;
 }
 
 document.querySelectorAll(".tab").forEach((btn) => {

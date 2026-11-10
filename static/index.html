@@ -9,9 +9,10 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
+  <link rel="stylesheet" href="/css/exchange.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs@1.0.0/qrcode.min.js"></script>
+  <script src="/js/vendor/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
 </head>
 <body>
@@ -34,6 +35,7 @@
         <label class="field-label" for="login-pass">密碼</label>
         <input id="login-pass" type="password" placeholder="輸入密碼" autocomplete="current-password" />
         <button id="login-btn" type="button" class="btn-primary">登入</button>
+
         <p id="login-error" class="error" role="alert"></p>
       </div>
     </div>
@@ -59,6 +61,8 @@
             <circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
           </svg>
         </button>
+        <button id="scan-ticket-btn" type="button" class="btn-secondary">掃描票券</button>
+        <button id="logout-btn" type="button" class="btn-ghost">登出</button>
         <select id="sort-select" class="sort-select" aria-label="排序方式">
           <option value="item" selected>依名稱</option>
           <option value="date">依時間</option>
@@ -74,7 +78,12 @@
 
     <main class="app-main">
       <section id="tab-list" class="tab-panel">
-        <div id="drawer-bar" class="drawer-bar"></div>
+        <p id="read-only-notice" class="hidden" role="status"></p>
+        <div class="drawer-navigation">
+          <button id="drawer-left" class="drawer-scroll" type="button" aria-label="標籤向左移動">&lt;</button>
+          <div id="drawer-bar" class="drawer-bar" tabindex="0" aria-label="票券標籤"></div>
+          <button id="drawer-right" class="drawer-scroll" type="button" aria-label="標籤向右移動">&gt;</button>
+        </div>
         <div id="ticket-list" class="ticket-list"></div>
         <div id="brand-pie" class="hidden"></div>
       </section>
@@ -153,10 +162,40 @@
         <div class="settings-group">
           <h3 class="settings-label">資料管理</h3>
           <div class="btn-row">
-            <button type="button" id="export-btn" class="btn-secondary">匯出 JSON</button>
+            <button type="button" id="export-btn" class="btn-secondary">匯出 JSON 整包</button>
+            <button type="button" id="export-zip-btn" class="btn-secondary">匯出 ZIP 整包</button>
+            <button type="button" id="export-csv-btn" class="btn-secondary">匯出 CSV 清單</button>
             <button type="button" id="delete-used-btn" class="btn-danger">刪除已使用</button>
           </div>
           <p class="hint-text">刪除已使用票券時，有餘額的不會刪除</p>
+        </div>
+        <p id="exchange-status" class="exchange-status" role="status" aria-live="polite">同步與匯出狀態</p>
+        <div id="exchange-admin">
+        <div class="settings-group">
+          <h3 class="settings-label">Main / Client 同步</h3>
+          <p class="hint-text">同步模式會以來源票券完整取代本機票券。每次替換前自動備份。</p>
+          <div class="exchange-grid">
+            <label>模式<select id="server-mode"><option value="main">本機管理</option><option value="client">強制同步來源</option></select></label>
+            <label>更新間隔（秒）<input id="sync-interval" type="number" min="30" max="86400" value="60" /></label>
+            <label class="exchange-wide">來源分享網址<input id="main-server-url" type="url" placeholder="https://對方網址/share#token=…" autocomplete="off" /></label>
+            <details class="exchange-wide"><summary>使用帳號密碼同步</summary><div class="exchange-grid"><label>Main 帳號<input id="main-server-username" autocomplete="off" /></label><label>Main 密碼<input id="main-server-password" type="password" autocomplete="new-password" /></label></div></details>
+          </div>
+          <div class="btn-row"><button id="save-sync-btn" type="button" class="btn-primary">保存並同步</button><button id="pull-now-btn" type="button" class="btn-secondary">立即強制同步</button></div>
+        </div>
+        <section class="settings-group" id="sharing-panel">
+          <h3 class="settings-label">分享票券</h3>
+          <div class="exchange-grid"><label>名稱（選填）<input id="share-name" maxlength="128" /></label><label>有效期限<input id="share-expiry" type="datetime-local" required /></label></div>
+          <button id="create-share-btn" type="button" class="btn-primary">新增讀取 Token</button>
+          <div id="share-created" class="hidden">
+            <div id="share-qr" aria-label="分享網址 QR Code"></div>
+            <button id="print-share-btn" type="button" class="btn-secondary">列印 QR Code</button>
+            <label>分享網址<textarea id="share-link" rows="3" readonly></textarea></label><button id="copy-share-link-btn" type="button" class="btn-secondary">複製分享網址</button>
+            <label>Token<textarea id="share-token" rows="2" readonly></textarea></label><button id="copy-share-token-btn" type="button" class="btn-secondary">複製 Token</button>
+          </div>
+          <div id="share-token-list"></div>
+        </section>
+        <section class="settings-group"><h3 class="settings-label">票券文字</h3><textarea id="ticket-text-export" rows="10" readonly></textarea><div class="btn-row"><button id="copy-ticket-text-btn" class="btn-secondary" type="button">複製票券文字</button><button id="export-txt-btn" class="btn-secondary" type="button">匯出 TXT</button></div></section>
+        <div class="settings-group"><h3 class="settings-label">匯入票券整包</h3><p class="hint-text">選擇本系統匯出的 JSON／ZIP。保留所有個別票券及狀態；相同身分不重複建立，不覆寫衝突資料。</p><input id="snapshot-import-file" type="file" class="hidden" accept=".json,.zip" /><button id="snapshot-import-btn" type="button" class="btn-secondary">選擇 JSON／ZIP 匯入</button></div>
         </div>
         <div class="settings-group import-section">
           <h3 class="settings-label">匯入資料</h3>
@@ -240,5 +279,7 @@
   </template>
 
   <script src="/js/app.js"></script>
+  <script src="/js/exchange.js"></script>
+  <script src="/js/sharing.js"></script>
 </body>
 </html>

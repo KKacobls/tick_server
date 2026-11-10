@@ -16,6 +16,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app import import_service
+from app import exchange
+from app import sharing
 from app.auth import create_access_token, get_current_user, verify_password
 from app.config import ROOT, settings
 from app.database import Base, SessionLocal, engine, get_db
@@ -56,13 +58,18 @@ class NoCacheForStatic(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         path = request.url.path
-        if path == "/" or path.startswith("/js/") or path.startswith("/css/"):
+        if path in ("/", "/share") or path.startswith("/js/") or path.startswith("/css/") or path.startswith('/api/sharing'):
             response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
             response.headers["Pragma"] = "no-cache"
+        if path == "/":
+            response.headers["Content-Security-Policy"] = "frame-src 'none'; object-src 'none'; base-uri 'self'"
         return response
 
 
 app.add_middleware(NoCacheForStatic)
+app.add_middleware(exchange.ExchangeMiddleware)
+app.include_router(exchange.router)
+app.include_router(sharing.router)
 
 
 def _migrate_add_missing_columns():
@@ -77,6 +84,8 @@ def _migrate_add_missing_columns():
 def on_startup():
     Base.metadata.create_all(bind=engine)
     _migrate_add_missing_columns()
+    with SessionLocal() as db:
+        exchange.runtime(db)
     scheduler = BackgroundScheduler()
     scheduler.add_job(
         _job_reminders,
@@ -86,13 +95,22 @@ def on_startup():
         id="daily_reminders",
     )
     scheduler.start()
+    scheduler.add_job(exchange.pull_due, "interval", seconds=15, id="ticket_sync", max_instances=1)
     app.state.scheduler = scheduler
+
+
+@app.on_event("shutdown")
+def on_shutdown():
+    scheduler = getattr(app.state, "scheduler", None)
+    if scheduler and scheduler.running:
+        scheduler.shutdown(wait=False)
 
 
 def _job_reminders():
     db = SessionLocal()
     try:
-        run_reminders(db)
+        if exchange.runtime(db).mode == "main":
+            run_reminders(db)
     finally:
         db.close()
 
@@ -113,7 +131,7 @@ def list_tickets(
     db: Session = Depends(get_db),
     _: str = Depends(get_current_user),
 ):
-    query = db.query(Ticket)
+    query = exchange.visible_query(db)
     if q:
         like = f"%{q}%"
         query = query.filter(
@@ -452,6 +470,10 @@ if STATIC_DIR.is_dir():
     @app.get("/")
     def index_page():
         return FileResponse(STATIC_DIR / "index.html")
+
+    @app.get('/share')
+    def share_page():
+        return FileResponse(STATIC_DIR / 'share.html', headers={'Referrer-Policy': 'no-referrer'})
 
     app.mount("/css", StaticFiles(directory=str(STATIC_DIR / "css")), name="css")
     app.mount("/js", StaticFiles(directory=str(STATIC_DIR / "js")), name="js")

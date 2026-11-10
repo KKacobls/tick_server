@@ -1,26 +1,20 @@
 auth:
-  username: __admin__
-  password: __password__
-  secret_key: change_this_secret_key
-
+  username: change_me
+  password: change_me
+  secret_key: generate_a_unique_secret_before_use
 server:
   host: "0.0.0.0"
-  port: 8766
-
+  port: 7004
 database:
   url: "sqlite:///./data/tickets.db"
-
 paths:
   uploads: "./data/uploads"
-
 discord:
   token: ""
-  channel_id: 
-
+  channel_id: 0
 reminder:
   days_before: [30, 14, 7, 1]
   run_hour: 9
   run_minute: 0
-
 import_defaults:
   expiry_months: 3

@@ -1,50 +1,91 @@
-# 票券管理系統
+# Ticket Server 票券管理
 
-前後端一體：後端 FastAPI + SQLite，前端靜態頁（RWD、條碼、三態點擊、小鍵盤、JSON/手動匯入、搜尋、操作紀錄）。
+FastAPI、SQLite 與手機版網頁。保留票券新增、圖片、雙條碼、狀態切換、搜尋、匯入、操作紀錄及 Discord 到期提醒。
 
-## 安裝
+## 安裝與啟動
+
+需要 Python 3.11 以上。
 
 ```bash
-cd ticker_server
 python -m venv .venv
-.venv\Scripts\activate
+# Linux/macOS
+source .venv/bin/activate
+# Windows：.venv\Scripts\activate
 pip install -r requirements.txt
+cp config.example.yaml config.yaml
 ```
 
-## 設定（必讀）
-
-1. 複製 `config.example.yaml` 為 `config.yaml`（若尚未存在）。
-2. 編輯 **`config.yaml`**：
-   - `auth.username` / `auth.password`：登入帳密（明文存於設定檔，請勿提交 git）。
-   - `auth.secret_key`：JWT 簽章，正式環境請改掉。
-   - `discord.token`：Discord Bot Token；留空則不發提醒。
-   - `discord.channel_id`：頻道 ID。
-   - `import_defaults.expiry_months`：無 API 期限時，以 `insertDate + N 月` 為預設期限（預設 3）。
-
-## 啟動
+在 `config.yaml` 設定登入帳密及獨立的 `auth.secret_key`，再執行：
 
 ```bash
-python run.py
+python app.py
 ```
 
-瀏覽器開啟：`http://localhost:8766`
+範例連接埠為 `7004`。Discord 提醒為選用，在本機設定檔填入 Bot Token 與頻道 ID 即可。`TICKET_CONFIG` 環境變數可指定其他設定檔位置。
 
-## 功能摘要
+儲存庫只有程式與設定範例，不包含實際帳密、Token、資料庫、票券圖片或備份，並以 `.gitignore` 排除這些資料。
 
-| 功能 | 說明 |
-|------|------|
-| JSON 匯入 | 略過已兌換；匯入後可編輯表修改名稱、標籤、期限、面額 |
-| 手動新增 | 名稱 + 條碼文字 或 圖片（檔案 / Ctrl+V） |
-| 列表排序 | 依期限/新增日；已使用排最下（重新載入時） |
-| 點擊狀態 | 正常 → 已使用 → 部分剩餘（小鍵盤）→ 正常；每次同步後端 |
-| 穩定順序 | 點擊改狀態**不會**重排列表，方便改金額 |
-| 提醒 | 有 `expires_at`：到期前 30/14/7/1 天各發一次 DC；無期限：每日摘要種類與張數 |
+## 分享、QR Code 與到期
 
-## 資料欄位（簡化）
+登入後至設定頁，在「分享票券」輸入名稱及有效期限，建立讀取 Token。頁面會顯示可列印的 QR Code、分享網址與 Token 複製框。完整 Token 只在建立時回傳，資料庫僅儲存其雜湊。
 
-- `name` 名稱
-- `barcode_text` / `barcode_image` 文字條碼或圖片
-- `insert_date` / `expires_at` 日期
-- `face_value` / `remaining_amount` 面額與剩餘
-- `brand_tag` 大標籤（JSON 自動抽【】，否則「其他」）
-- `local_state` 0/1/2
+手機掃描 QR Code 可開啟唯讀票券頁，查看條碼、複製文字，並匯出 TXT、JSON 或 ZIP。Token 到期或撤銷後，新讀取與匯出請求會被拒絕；Token 無法新增、修改或刪除票券，也無法管理設定。
+
+分享網址格式為 `https://你的網址/share#token=讀取憑證`。憑證放在 URL fragment，由頁面透過 Authorization header 使用，不放入一般請求網址。支援 HTTP API 的 App 可使用：
+
+```http
+GET /api/v1/tickets
+GET /api/v1/snapshot
+GET /api/sharing/export?format=txt
+Authorization: Bearer <讀取憑證>
+```
+
+Token 的建立與撤銷需要原本的帳密登入。
+
+## 文字匯出
+
+設定頁及分享頁均有可複製的文字框。相同名稱的票券集中顯示，每張票券的第一、第二條碼各佔一行；不同名稱之間空一行：
+
+```text
+必勝客10元
+第一張條碼1
+第一張條碼2
+第二張條碼1
+第二張條碼2
+
+統一超商
+條碼1
+條碼2
+```
+
+JSON／ZIP 保留每張票券的完整欄位、狀態與圖片；TXT 提供名稱及條碼。
+
+## 強制同步
+
+在同步設定選擇「強制同步來源」，貼上對方產生的完整分享網址，按「保存並同步」並確認。無須另外輸入 Token。也可在「使用帳號密碼同步」設定來源站的登入帳密。
+
+成功時，本機原有票券會被完整取代：來源已刪除的票券會消失，來源為空清單時本機也會清空。同步模式禁止本機編輯票券；可依間隔自動同步，或按「立即強制同步」。切回「本機管理」可停止同步並保留當時資料。
+
+每次實際替換前，系統會在資料庫旁的 `sync_backups/` 建立 SQLite 備份。來源無法連線、Token 到期、快照格式錯誤或寫入失敗時，保留原本票券。來源未變的週期同步不重複建立備份。設定保存的來源憑證會加密，操作紀錄不寫入完整分享網址的 fragment。
+
+舊版 client 設定不會自動開始新的整批替換，必須在設定頁重新確認啟用。
+
+還原時先停止服務，再以對應 `sync_backups/before_mirror_*.db` 還原 `data/tickets.db`；同步不會刪除原有圖片檔。還原後重新啟動服務。
+
+## 測試
+
+API、到期／撤銷、權限、備份、同步取代與失敗回復：
+
+```bash
+python -m unittest discover -s tests -p 'test_*.py'
+```
+
+瀏覽器及 QR 解碼測試另需 Playwright、OpenCV、NumPy：
+
+```bash
+pip install playwright opencv-python-headless numpy
+playwright install chromium
+python tests/ui_sharing.py
+```
+
+測試使用暫存資料庫與模擬來源，不會接觸正式票券或傳送 Discord 訊息。

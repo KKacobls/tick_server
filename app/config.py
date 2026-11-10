@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 from typing import Any
 
 import yaml
 from pydantic import BaseModel, Field
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG_PATH = ROOT / "config.yaml"
+CONFIG_PATH = Path(os.environ.get("TICKET_CONFIG", str(ROOT / "config.yaml")))
 
 
 class AuthConfig(BaseModel):
