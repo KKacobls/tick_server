@@ -1,4 +1,6 @@
 import unittest
+from unittest.mock import patch
+from app.config import settings
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
@@ -63,7 +65,8 @@ class MobileTest(unittest.TestCase):
         self.assertEqual(self.db.query(Ticket).count(), 1)
 
     def test_device_is_scoped_and_revocable(self):
-        data = create_device(DeviceRequest(name="安卓"), self.db, "admin")
+        with patch.object(settings.auth, "password", "test-strong-password"), patch.object(settings.auth, "secret_key", "test-secure-signing-key"):
+            data = create_device(DeviceRequest(name="安卓"), self.db, "admin")
         self.assertTrue(data["token"].startswith("mob_"))
         row = self.db.query(MobileDevice).one()
         self.assertNotIn(data["token"], row.token_hash)
