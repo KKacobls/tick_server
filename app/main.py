@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app import import_service
 from app import exchange
 from app import sharing
+from app import mobile, mobile_auth
 from app.auth import create_access_token, get_current_user, verify_password
 from app.config import ROOT, settings
 from app.database import Base, SessionLocal, engine, get_db
@@ -70,6 +71,8 @@ app.add_middleware(NoCacheForStatic)
 app.add_middleware(exchange.ExchangeMiddleware)
 app.include_router(exchange.router)
 app.include_router(sharing.router)
+app.include_router(mobile_auth.router)
+app.include_router(mobile.router)
 
 
 def _migrate_add_missing_columns():
