@@ -18,6 +18,7 @@ from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from app.auth import get_current_user, security
 from app.database import Base, get_db
+from app.config import settings
 from app.services import log_activity
 from app import exchange
 
@@ -77,6 +78,9 @@ def devices(db: Session = Depends(get_db), _: str = Depends(get_current_user)):
 @router.post("/devices", status_code=201)
 def create_device(body: DeviceRequest, db: Session = Depends(get_db), _: str = Depends(get_current_user)):
     exchange.protect_main(db)
+    if (settings.auth.password in {"admin", "change_me"} or
+            settings.auth.secret_key in {"dev-secret-change-me", "generate_a_unique_secret_before_use"}):
+        raise HTTPException(409, "請先在 Main 的 config.yaml 設定安全的登入密碼和 auth.secret_key，再產生手機配對碼")
     token = "mob_" + secrets.token_urlsafe(48)
     item = MobileDevice(
         id=str(uuid.uuid4()), name=body.name.strip() or "手機",
