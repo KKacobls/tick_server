@@ -46,11 +46,12 @@
 
   document.getElementById("mobile-pair-create").addEventListener("click", async () => {
     const name = document.getElementById("mobile-device-name").value.trim() || "我的手機";
+    if (!location.origin.startsWith("https://")) {
+      alert("請以 HTTPS 開啟 Main 後再配對，避免裝置權杖外洩。");
+      return;
+    }
     try {
       const result = await api("/api/mobile/devices", { method: "POST", body: JSON.stringify({ name }) });
-      if (!location.origin.startsWith("https://")) {
-        alert("請以 HTTPS 開啟 Main 再配對：手機正式版會拒絕 HTTP，避免裝置權杖外洩。");
-      }
       output.classList.remove("hidden");
       qrBox.replaceChildren();
       new QRCode(qrBox, {
@@ -64,4 +65,5 @@
   });
 
   document.addEventListener("ticket-auth-ready", refreshDevices);
+  if (typeof token !== "undefined" && token) refreshDevices();
 })();
