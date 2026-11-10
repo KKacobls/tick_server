@@ -154,8 +154,9 @@ def import_scan(body: ScanBatch, db: Session = Depends(get_db), _dev: MobileDevi
 @router.post("/tickets", status_code=201)
 def create_ticket(body: TicketCreate, db: Session = Depends(get_db), _dev: MobileDevice = Depends(require_device)):
     exchange.protect_main(db)
-    if not body.name.strip() or not (body.barcode_text or body.barcode_text_2):
-        raise HTTPException(422, "名稱和條碼必填")
+    if not body.name.strip():
+        raise HTTPException(422, "名稱必填")
+    # Image-only tickets are supported: the mobile UI uploads the image next.
     if _existing_code(db, body.barcode_text, body.barcode_text_2):
         raise HTTPException(409, "條碼已存在")
     fields = body.model_dump()
