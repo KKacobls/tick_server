@@ -1,21 +1,27 @@
 import unittest
 from unittest.mock import patch
-from app.config import settings
 
 from fastapi import HTTPException
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
-from app.database import Base
-from app.mobile import ScanBatch, _existing_code, import_scan, pair_codes
-from app.mobile_auth import DeviceRequest, MobileDevice, create_device, require_device, revoke_device
-from app.models import Ticket
 from fastapi.security import HTTPAuthorizationCredentials
 
 
 class MobileTest(unittest.TestCase):
     def setUp(self):
+        # Import the application only after other test modules have configured
+        # TICKET_CONFIG. Existing test_sharing.py sets an isolated config
+        # during unittest discovery, so eager imports here break its login.
+        global Base, ScanBatch, _existing_code, import_scan, pair_codes
+        global DeviceRequest, MobileDevice, create_device, require_device, revoke_device
+        global Ticket, settings
+        from app.config import settings
+        from app.database import Base
+        from app.mobile import ScanBatch, _existing_code, import_scan, pair_codes
+        from app.mobile_auth import DeviceRequest, MobileDevice, create_device, require_device, revoke_device
+        from app.models import Ticket
         self.engine = create_engine(
             "sqlite+pysqlite:///:memory:", connect_args={"check_same_thread": False}, poolclass=StaticPool
         )
