@@ -28,10 +28,11 @@
       ? '輔助：Main 暫時無法更新，顯示本機保留票券。'
       : '輔助：每次開啟向 Main 更新票券。';
     const canUpload = window.ticketAuxiliary?.canUpload === true;
-    document.querySelectorAll('#manual-form input, #manual-form button').forEach((el) => { el.disabled = readOnly && !canUpload; });
-    document.querySelectorAll('#delete-used-btn, #json-import-btn, #json-save-all-btn, #snapshot-import-file').forEach((el) => { el.disabled = readOnly; });
+    document.querySelectorAll('#delete-used-btn, #snapshot-import-file').forEach((el) => { el.disabled = readOnly; });
+    document.querySelectorAll('#json-import-btn, #json-save-all-btn').forEach((el) => { el.disabled = readOnly && !canUpload; });
     document.querySelector('.tab[data-tab="manual"]').disabled = readOnly && !canUpload;
-    document.querySelector('#manual-form button[type="submit"]').textContent = readOnly ? '送交 Main 審核' : '新增票券';
+    byId('json-save-all-btn').textContent = readOnly ? '送交 Main 審核' : '全部儲存';
+    window.ticketNotes?.render();
     byId("pull-now-btn").disabled = serverMode !== "client";
   }
 
@@ -111,21 +112,6 @@
     event.target.value = "";
   }));
   byId("snapshot-import-btn").addEventListener("click", () => byId("snapshot-import-file").click());
-  const bar = byId("drawer-bar");
-  function updateArrows() {
-    byId("drawer-left").disabled = bar.scrollLeft <= 1;
-    byId("drawer-right").disabled = bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1;
-  }
-  for (const [id, direction] of [["drawer-left", -1], ["drawer-right", 1]]) {
-    byId(id).addEventListener("click", () => bar.scrollBy({
-      left: direction * Math.max(180, bar.clientWidth * 0.75),
-      behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth",
-    }));
-  }
-  bar.addEventListener("scroll", updateArrows, { passive: true });
-  document.addEventListener("ticket-drawers-rendered", () => requestAnimationFrame(updateArrows));
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(updateArrows).observe(bar);
-  window.addEventListener("resize", updateArrows);
   byId("scan-ticket-btn").addEventListener("click", () => {
     if (window.TicketScanner?.scan) window.TicketScanner.scan();
     else {
@@ -149,7 +135,7 @@
       status(`找到 ${matches.length} 張對應票券。掃描不會自動兌換或修改狀態。`);
     } else if (!window.ticketExchange.readOnly || window.ticketAuxiliary?.canUpload) {
       document.querySelector('.tab[data-tab="manual"]').click();
-      document.querySelector('#manual-form input[name="barcode_text"]').value = code;
+      byId("json-input").value = `新票券\n${code}`;
       status("尚未找到票券，已將條碼填入新增表單，填寫後再手動儲存。");
     } else status("目前票券中沒有此條碼，請向 main server 更新後重試。", true);
   }
@@ -163,5 +149,4 @@
   document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') refreshOnReturn(); });
   document.addEventListener("ticket-auth-ready", initialize);
   if (token) initialize();
-  updateArrows();
 })();

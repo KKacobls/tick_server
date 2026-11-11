@@ -25,6 +25,8 @@ def ticket_to_dict(t: Ticket) -> dict:
         "name": t.name,
         "barcode_text": t.barcode_text,
         "barcode_text_2": t.barcode_text_2,
+        "note_text": t.note_text,
+        "title_image": t.title_image,
         "barcode_image": t.barcode_image,
         "insert_date": t.insert_date.isoformat() if t.insert_date else None,
         "expires_at": t.expires_at.isoformat() if t.expires_at else None,

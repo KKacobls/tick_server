@@ -33,6 +33,7 @@
       for (const code of [item.barcode_text, item.barcode_text_2]) {
         if (code) groups.get(item.name).push(code);
       }
+      if (item.note_text) groups.get(item.name).push(item.note_text);
     }
     byId('ticket-text-export').value = [...groups].map(([name, codes]) => [name, ...codes].join('\n')).join('\n\n');
   }

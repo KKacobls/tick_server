@@ -10,10 +10,8 @@
   <link href="https://fonts.googleapis.com/css2?family=Quicksand:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/exchange.css" />
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
   <script src="/js/vendor/JsBarcode.all.min.js"></script>
   <script src="/js/vendor/qrcode.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
 </head>
 <body>
   <div id="login-view" class="login-screen">
@@ -79,53 +77,32 @@
       <section id="tab-list" class="tab-panel">
         <p id="read-only-notice" class="hidden" role="status"></p>
         <div class="drawer-navigation">
-          <button id="drawer-left" class="drawer-scroll" type="button" aria-label="標籤向左移動">&lt;</button>
-          <div id="drawer-bar" class="drawer-bar" tabindex="0" aria-label="票券標籤"></div>
-          <button id="drawer-right" class="drawer-scroll" type="button" aria-label="標籤向右移動">&gt;</button>
+          <div id="drawer-bar" class="drawer-bar" aria-label="票券標籤"></div>
         </div>
         <div id="ticket-list" class="ticket-list"></div>
         <div id="brand-pie" class="hidden"></div>
       </section>
 
       <section id="tab-manual" class="tab-panel hidden">
-        <h2 class="section-title">新增票券</h2>
-        <form id="manual-form" class="form-grid">
-          <label class="name-field field-block">名稱 <span class="required">*</span>
-            <input name="name" id="manual-name" required autocomplete="off" placeholder="例如：星巴克買一送一" />
-            <div id="name-suggest" class="suggest-panel hidden"></div>
-          </label>
-          <label class="field-block">大標籤
-            <input name="brand_tag" value="其他" placeholder="品牌或分類" />
-          </label>
-          <label class="field-block">條碼文字
-            <input name="barcode_text" placeholder="掃描或手動輸入條碼" />
-          </label>
-          <div class="form-row-2">
-            <label class="field-block">新增日期
-              <input name="insert_date" type="date" />
-            </label>
-            <label class="field-block">兌換期限
-              <input name="expires_at" type="date" />
-            </label>
+        <h2 class="section-title">新增</h2>
+        <div class="settings-group import-section">
+
+
+          <textarea id="json-input" rows="8" placeholder="JSON 整包 / results 陣列&#10;&#10;或純文字格式：&#10;肯德基1顆原味蛋撻免費兌換券&#10;XXX&#10;XXX11"></textarea>
+          <input id="json-file-input" type="file" accept=".json,application/json" class="hidden" />
+          <label class="chk-card"><input id="import-as-note" type="checkbox"><span>作為筆記</span></label>
+          <div class="import-actions">
+            <button type="button" id="json-pick-file-btn" class="btn-secondary">選擇 JSON 檔</button>
+            <button type="button" id="json-import-btn" class="btn-secondary">預覽匯入</button>
+            <button type="button" id="json-save-all-btn" class="btn-primary hidden">全部儲存</button>
           </div>
-          <label class="field-block">面額
-            <input name="face_value" type="number" step="1" placeholder="選填" />
-          </label>
-          <input name="image" type="file" accept="image/*" id="manual-image" class="hidden" />
-          <label class="paste-label field-block">圖片（點擊上傳 / Ctrl+V 貼上）
-            <div id="paste-zone" tabindex="0" role="button" aria-label="上傳或貼上圖片">
-              <svg class="paste-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>
-              </svg>
-              <span>點此或 Ctrl+V</span>
-            </div>
-          </label>
-          <div class="img-actions">
-            <button type="button" id="crop-btn" class="btn-secondary hidden">裁切圖片</button>
-            <button type="button" id="clear-img-btn" class="btn-secondary hidden">清除圖片</button>
-          </div>
-          <button type="submit" class="btn-primary btn-submit">新增票券</button>
-        </form>
+          <div id="import-summary" class="import-summary"></div>
+          <div id="import-edit-table" class="import-preview"></div>
+        </div>
+      </section>
+      <section id="tab-notes" class="tab-panel hidden">
+        <h2 class="section-title">筆記</h2>
+        <div id="note-list"></div>
       </section>
 
       <section id="tab-logs" class="tab-panel hidden">
@@ -147,6 +124,7 @@
 
       <section id="tab-settings" class="tab-panel hidden">
         <h2 class="section-title">設定</h2>
+        <button id="settings-logout-btn" class="btn-secondary" type="button">登出</button>
         <div class="settings-group">
           <h3 class="settings-label">條碼顯示</h3>
           <div class="toggle-group">
@@ -203,19 +181,6 @@
         <section class="settings-group"><h3 class="settings-label">票券文字</h3><textarea id="ticket-text-export" rows="10" readonly></textarea><div class="btn-row"><button id="copy-ticket-text-btn" class="btn-secondary" type="button">複製票券文字</button><button id="export-txt-btn" class="btn-secondary" type="button">匯出 TXT</button></div></section>
         <div class="settings-group"><h3 class="settings-label">匯入票券整包</h3><p class="hint-text">選擇本系統匯出的 JSON／ZIP。保留所有個別票券及狀態；相同身分不重複建立，不覆寫衝突資料。</p><input id="snapshot-import-file" type="file" class="hidden" accept=".json,.zip" /><button id="snapshot-import-btn" type="button" class="btn-secondary">選擇 JSON／ZIP 匯入</button></div>
         </div>
-        <div class="settings-group import-section">
-          <h3 class="settings-label">匯入資料</h3>
-          <p class="hint-text">支援 JSON，或純文字（含中文行為標題、僅英數行為條碼）</p>
-          <textarea id="json-input" rows="8" placeholder="JSON 整包 / results 陣列&#10;&#10;或純文字格式：&#10;肯德基1顆原味蛋撻免費兌換券&#10;XXX&#10;XXX11"></textarea>
-          <input id="json-file-input" type="file" accept=".json,application/json" class="hidden" />
-          <div class="import-actions">
-            <button type="button" id="json-pick-file-btn" class="btn-secondary">選擇 JSON 檔</button>
-            <button type="button" id="json-import-btn" class="btn-secondary">預覽匯入</button>
-            <button type="button" id="json-save-all-btn" class="btn-primary hidden">全部儲存</button>
-          </div>
-          <div id="import-summary" class="import-summary"></div>
-          <div id="import-edit-table"></div>
-        </div>
         <div class="settings-group">
           <button type="button" id="toggle-log-search-btn" class="btn-secondary log-search-toggle">查看操作紀錄</button>
           <div id="settings-log-panel" class="settings-log-panel hidden">
@@ -246,6 +211,7 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         <span>新增</span>
       </button>
+      <button type="button" class="tab" data-tab="notes"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 3h10l4 4v14H5zM9 11h6M9 15h6"/></svg><span>筆記</span></button>
       <button type="button" class="tab" data-tab="logs">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
         <span>紀錄</span>
@@ -287,6 +253,7 @@
   <script src="/js/app.js"></script>
   <script src="/js/exchange.js"></script>
   <script src="/js/sharing.js"></script>
+  <script src="/js/notes.js"></script>
   <script src="/js/auxiliary.js"></script>
 </body>
 </html>

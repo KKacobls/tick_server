@@ -90,7 +90,7 @@
       await Promise.all([refreshRequests(), refreshDrafts()]);
     } catch (error) { status(error.message); }
   }
-  async function submitTicket(ticket, file) {
+  async function submitItems(items, file) {
     if (!enabled || mode !== 'client') throw new Error('請先在設定啟用輔助上傳');
     const images = {};
     if (file) {
@@ -103,14 +103,14 @@
       images['0'] = data;
     }
     // Keep the same request id across a network retry to prevent duplicate approvals.
-    const contents = JSON.stringify({tickets: [ticket], images});
+    const contents = JSON.stringify({tickets: items, images});
     if (!pendingProposal || pendingProposal.contents !== contents) {
       const bytes = crypto.getRandomValues(new Uint8Array(16));
       bytes[6] = (bytes[6] & 15) | 64;
       bytes[8] = (bytes[8] & 63) | 128;
       const hex = [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
       const id = `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
-      pendingProposal = {contents, body: {id, source_name: '手機／輔助', tickets: [ticket], images}};
+      pendingProposal = {contents, body: {id, source_name: '手機／輔助', tickets: items, images}};
     }
     try {
       await api('/api/auxiliary/submit', {method: 'POST', body: JSON.stringify(pendingProposal.body)});
@@ -126,6 +126,6 @@
   byId('auxiliary-refresh').addEventListener('click', (event) => run(event.currentTarget, refreshRequests));
   document.querySelector('.tab[data-tab="settings"]').addEventListener('click', initialize);
   document.addEventListener('ticket-auth-ready', initialize);
-  window.ticketAuxiliary = {initialize, submitTicket, get canUpload() { return enabled && mode === 'client'; }};
+  window.ticketAuxiliary = {initialize, submitItems, get canUpload() { return enabled && mode === 'client'; }};
   if (token) initialize();
 })();

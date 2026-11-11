@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 from app import import_service
 from app import exchange
 from app import sharing
-from app import pages, auxiliary
+from app import pages, auxiliary, notes
 from app.auth import create_access_token, get_current_user, verify_password
 from app.config import ROOT, settings
 from app.database import Base, SessionLocal, engine, get_db
@@ -73,6 +73,7 @@ app.include_router(exchange.router)
 app.include_router(sharing.router)
 app.include_router(pages.router)
 app.include_router(auxiliary.router)
+app.include_router(notes.router)
 app.add_middleware(pages.PageGate)
 
 
@@ -82,6 +83,14 @@ def _migrate_add_missing_columns():
         if "barcode_text_2" not in cols:
             conn.execute(text("ALTER TABLE tickets ADD COLUMN barcode_text_2 VARCHAR(128)"))
             conn.commit()
+        for column, sql_type in [('note_text', 'TEXT'), ('title_image', 'VARCHAR(512)')]:
+            if column not in cols:
+                conn.execute(text(f'ALTER TABLE tickets ADD COLUMN {column} {sql_type}'))
+        conn.execute(text("""UPDATE tickets SET note_text = COALESCE(note_text || char(10), '') ||
+            COALESCE(barcode_text, '') || CASE WHEN barcode_text_2 IS NOT NULL THEN char(10) || barcode_text_2 ELSE '' END,
+            barcode_text = NULL, barcode_text_2 = NULL, source = 'note', no_expiry = 1, expires_at = NULL
+            WHERE lower(COALESCE(barcode_text, '')) LIKE '%http%' OR lower(COALESCE(barcode_text_2, '')) LIKE '%http%'"""))
+        conn.commit()
 
 
 @app.on_event("startup")
@@ -166,7 +175,7 @@ def create_ticket(
         dup = db.query(Ticket).filter(Ticket.barcode_text == body.barcode_text).first()
         if dup:
             raise HTTPException(status_code=409, detail="Barcode already exists")
-    t = Ticket(**body.model_dump())
+    t = Ticket(**notes.inherit_image(db, notes.normalize(body.model_dump())))
     db.add(t)
     db.commit()
     db.refresh(t)
@@ -185,6 +194,8 @@ def update_ticket(
     if not t:
         raise HTTPException(status_code=404, detail="Not found")
     data = body.model_dump(exclude_unset=True)
+    if data.get('note_text') is not None or notes.contains_http(data.get('barcode_text')) or notes.contains_http(data.get('barcode_text_2')):
+        data = notes.normalize(data)
     for k, v in data.items():
         setattr(t, k, v)
     t.updated_at = datetime.utcnow()
@@ -254,10 +265,13 @@ def _build_import_preview(db: Session, rows: list, field_fn) -> dict:
             )
             skipped += 1
             continue
+        fields = notes.normalize(fields)
         bc = fields.get("barcode_text")
         existing = None
         if bc:
             existing = db.query(Ticket).filter(Ticket.barcode_text == bc).first()
+        if fields.get('note_text') is not None:
+            existing = db.query(Ticket).filter_by(name=fields['name'], note_text=fields['note_text']).first()
         if existing:
             preview_items.append(
                 {
@@ -305,7 +319,7 @@ def import_text_preview(
     db: Session = Depends(get_db),
     _: str = Depends(get_current_user),
 ):
-    pairs = import_service.parse_text_import(body.text)
+    pairs = import_service.parse_text_import(body.text, as_note=body.as_note)
     if not pairs:
         raise HTTPException(status_code=400, detail="無法解析文字格式")
     return _build_import_preview(db, pairs, import_service.text_row_to_ticket_fields)
@@ -321,7 +335,7 @@ def import_json_commit(
     created_items: list[dict] = []
     duplicate_items: list[dict] = []
     for item in body.items:
-        payload = item.model_dump()
+        payload = notes.normalize(item.model_dump())
         bc = payload.get("barcode_text")
         if bc:
             existing = db.query(Ticket).filter(Ticket.barcode_text == bc).first()
@@ -329,7 +343,14 @@ def import_json_commit(
                 duplicates += 1
                 duplicate_items.append(ticket_to_dict(existing))
                 continue
-        t = Ticket(**payload, source=payload.get("source") or "json_import")
+        if payload.get('note_text') is not None:
+            existing = db.query(Ticket).filter_by(name=payload['name'], note_text=payload['note_text']).first()
+            if existing:
+                duplicates += 1
+                duplicate_items.append(ticket_to_dict(existing))
+                continue
+        payload.setdefault('source', 'json_import')
+        t = Ticket(**notes.inherit_image(db, payload))
         db.add(t)
         db.flush()
         created_items.append(ticket_to_dict(t))

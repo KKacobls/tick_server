@@ -1,17 +1,16 @@
 /* Ticket UI - comments in zh-TW where helpful */
 
 const API = "";
+function isNote(ticket) {
+  return ticket.note_text !== null && ticket.note_text !== undefined || /http/i.test(ticket.barcode_text || '') || /http/i.test(ticket.barcode_text_2 || '');
+}
 let token = localStorage.getItem("ticket_token") || "";
 let tickets = [];
 let displayOrder = []; // stable order; no reorder on state click
 let pendingNumpadId = null;
-let pastedImageFile = null;
-let pastedImageUrl = null;
 let importPreviewItems = [];
 const inflightState = new Set();
 let sortMode = localStorage.getItem("ticket_sort_mode") || "item"; // date|item
-let croppedImageBlob = null;
-let nameSuggestOpen = false;
 let drawerMode = localStorage.getItem("drawer_mode") || "categorized";
 const expandedTitleDrawers = new Set();
 const storedBcType = localStorage.getItem("bc_type") || "qrcode";
@@ -146,6 +145,7 @@ async function loadTickets(rebuildOrder = true) {
     tickets = displayOrder.map((id) => map[id]).filter(Boolean);
   }
   renderList();
+  window.ticketNotes?.render();
 }
 
 function filteredTickets() {
@@ -153,6 +153,7 @@ function filteredTickets() {
   return displayOrder
     .map((id) => tickets.find((t) => t.id === id))
     .filter(Boolean)
+    .filter((t) => !isNote(t))
     .filter((t) => {
       if (hideUsed && t.local_state > 0) return false;
       if (drawerMode.startsWith("brand:")) {
@@ -385,6 +386,7 @@ function renderTitleDrawer(listEl, tpl, title, items, groupKey = title) {
     renderList();
   });
   drawer.appendChild(header);
+  window.ticketNotes?.addTitleImage(drawer, title, items);
 
   const body = document.createElement("div");
   body.className = "title-drawer-body" + (isOpen ? "" : " hidden");
@@ -406,7 +408,7 @@ function renderList() {
 
   if (drawerMode === "categorized") {
     const brandBuckets = new Map();
-    tickets.forEach((t) => {
+    tickets.filter((t) => !isNote(t)).forEach((t) => {
       const brand = (t.brand_tag || "其他").trim() || "其他";
       if (!brandBuckets.has(brand)) brandBuckets.set(brand, []);
       brandBuckets.get(brand).push(t);
@@ -499,7 +501,7 @@ function renderBrandPie(counts) {
 function renderDrawerBar() {
   const host = document.getElementById("drawer-bar");
   if (!host) return;
-  const brands = [...new Set(tickets.map((t) => t.brand_tag).filter(Boolean))].sort((a, b) =>
+  const brands = [...new Set(tickets.filter((t) => !isNote(t)).map((t) => t.brand_tag).filter(Boolean))].sort((a, b) =>
     a.localeCompare(b)
   );
   const items = [
@@ -507,10 +509,9 @@ function renderDrawerBar() {
     { key: "none", label: "不分類(全部)" },
     ...brands.map((b) => ({
       key: `brand:${b}`,
-      label: `${b}${tickets.filter((t) => (t.brand_tag || "") === b).length}張`,
+      label: `${b}${tickets.filter((t) => !isNote(t) && (t.brand_tag || "") === b).length}張`,
     })),
   ];
-  const previousScroll = host.scrollLeft;
   host.innerHTML = "";
   items.forEach((it) => {
     const b = document.createElement("button");
@@ -525,7 +526,6 @@ function renderDrawerBar() {
     });
     host.appendChild(b);
   });
-  host.scrollLeft = previousScroll;
   document.dispatchEvent(new Event("ticket-drawers-rendered"));
 }
 
@@ -616,7 +616,7 @@ function renderImportEditTable(items) {
       <td>${Number(row.temp_id) + 1}</td>
       <td><input type="checkbox" class="pick-row" checked /></td>
       <td><input data-f="name" value="${escapeAttr(t.name)}" /></td>
-      <td><input value="${escapeAttr(t.barcode_text || "")}" readonly /></td>
+      <td>${isNote(t) ? `<textarea data-f="note_text" rows="4">${escapeHtml(t.note_text || '')}</textarea>` : `<input value="${escapeAttr(t.barcode_text || "")}" readonly />`}</td>
       <td><input value="${escapeAttr(t.barcode_text_2 || "")}" readonly /></td>
       <td><input data-f="brand_tag" value="${escapeAttr(t.brand_tag)}" /></td>
       <td>
@@ -624,7 +624,7 @@ function renderImportEditTable(items) {
         <input data-f="expires_at" type="date" value="${t.expires_at || ""}" class="${t.no_expiry ? "hidden" : ""}" />
       </td>
       <td><input data-f="face_value" type="number" value="${t.face_value ?? ""}" /></td>
-      <td>待新增</td>
+      <td>${isNote(t) ? '筆記' : '待新增'}</td>
     </tr>`;
   });
   duplicateRows.forEach((row) => {
@@ -644,6 +644,8 @@ function renderImportEditTable(items) {
   });
   html += "</tbody></table>";
   host.innerHTML = html;
+  const labels = ['#', '選取', '名稱', '條碼／筆記', '條碼2', '標籤', '期限', '面額', '狀態'];
+  host.querySelectorAll('tbody tr').forEach((row) => [...row.cells].forEach((cell, index) => { cell.dataset.label = labels[index]; }));
   host.querySelectorAll(".expiry-toggle").forEach((btn) => {
     btn.addEventListener("click", () => {
       const td = btn.closest("td");
@@ -731,91 +733,6 @@ function escapeHtml(s) {
     .replace(/>/g, "&gt;");
 }
 
-function setImagePreviewFromFile(file, label = "image") {
-  if (!file) return;
-  pastedImageFile = file;
-  croppedImageBlob = null;
-  const pasteZone = document.getElementById("paste-zone");
-  const cropBtn = document.getElementById("crop-btn");
-  const clearBtn = document.getElementById("clear-img-btn");
-  if (pastedImageUrl) URL.revokeObjectURL(pastedImageUrl);
-  pastedImageUrl = URL.createObjectURL(file);
-  pasteZone.innerHTML = "";
-  const img = document.createElement("img");
-  img.src = pastedImageUrl;
-  img.style.maxWidth = "100%";
-  img.style.maxHeight = "200px";
-  img.style.display = "block";
-  img.style.borderRadius = "8px";
-  const meta = document.createElement("div");
-  meta.style.marginTop = "6px";
-  meta.style.color = "#8b9cb3";
-  meta.style.fontSize = "12px";
-  meta.textContent = `${label}: ${file.type} ${Math.round(file.size / 1024)}KB`;
-  pasteZone.appendChild(img);
-  pasteZone.appendChild(meta);
-  cropBtn?.classList.remove("hidden");
-  clearBtn?.classList.remove("hidden");
-}
-
-function clearImagePreview() {
-  pastedImageFile = null;
-  croppedImageBlob = null;
-  if (pastedImageUrl) {
-    URL.revokeObjectURL(pastedImageUrl);
-    pastedImageUrl = null;
-  }
-  const pasteZone = document.getElementById("paste-zone");
-  if (pasteZone) {
-    pasteZone.innerHTML = `<svg class="paste-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg><span>點此或 Ctrl+V</span>`;
-  }
-  document.getElementById("crop-btn")?.classList.add("hidden");
-  document.getElementById("clear-img-btn")?.classList.add("hidden");
-  const fileInput = document.getElementById("manual-image");
-  if (fileInput) fileInput.value = "";
-}
-
-function openCropper() {
-  if (!pastedImageUrl || !window.Cropper) return;
-  const modal = document.createElement("div");
-  modal.className = "crop-modal";
-  modal.innerHTML = `
-    <div class="crop-card">
-      <img id="crop-img" alt="crop" />
-      <div class="actions">
-        <button type="button" id="crop-cancel">取消</button>
-        <button type="button" class="primary" id="crop-ok">完成</button>
-      </div>
-    </div>
-  `;
-  document.body.appendChild(modal);
-  const img = modal.querySelector("#crop-img");
-  img.src = pastedImageUrl;
-  const cropper = new window.Cropper(img, {
-    viewMode: 1,
-    autoCropArea: 0.9,
-    responsive: true,
-    background: false,
-    movable: true,
-    zoomable: true,
-  });
-  modal.querySelector("#crop-cancel").addEventListener("click", () => {
-    cropper.destroy();
-    modal.remove();
-  });
-  modal.querySelector("#crop-ok").addEventListener("click", async () => {
-    const canvas = cropper.getCroppedCanvas({ maxWidth: 1024, maxHeight: 1024 });
-    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png", 0.92));
-    if (blob) {
-      croppedImageBlob = blob;
-      const file = new File([blob], "cropped.png", { type: "image/png" });
-      setImagePreviewFromFile(file, "cropped");
-    }
-    cropper.destroy();
-    modal.remove();
-  });
-}
-
 // --- events ---
 document.getElementById("login-btn").addEventListener("click", async () => {
   const username = document.getElementById("login-user").value;
@@ -837,6 +754,7 @@ document.getElementById("login-btn").addEventListener("click", async () => {
 });
 
 document.getElementById("logout-btn")?.addEventListener("click", logout);
+document.getElementById("settings-logout-btn").addEventListener("click", logout);
 document.getElementById("refresh-btn").addEventListener("click", () => loadTickets(true));
 document.getElementById("hide-used-chk").addEventListener("change", () => renderList());
 document.querySelectorAll('input[name="bc-type"]').forEach((el) => {
@@ -849,23 +767,9 @@ document.getElementById("hide-used-chk").addEventListener("change", (e) => {
   localStorage.setItem("hide_used", e.target.checked ? "1" : "0");
 });
 
-document.getElementById("manual-image")?.addEventListener("change", (e) => {
-  const f = e.target.files?.[0];
-  if (f) setImagePreviewFromFile(f, "upload");
-});
-document.getElementById("crop-btn")?.addEventListener("click", () => openCropper());
-document.getElementById("clear-img-btn")?.addEventListener("click", () => clearImagePreview());
-
-// Merge click-upload and paste into one zone
-document.addEventListener("click", (e) => {
-  const zone = e.target?.closest?.("#paste-zone");
-  if (!zone) return;
-  document.getElementById("manual-image")?.click();
-});
-
 document.getElementById("export-btn")?.addEventListener("click", () => exportJson());
 document.getElementById("import-btn")?.addEventListener("click", () => {
-  const importTabBtn = document.querySelector('.tab[data-tab="settings"]');
+  const importTabBtn = document.querySelector('.tab[data-tab="manual"]');
   if (importTabBtn) {
     importTabBtn.click();
   }
@@ -960,30 +864,28 @@ document.getElementById("json-file-input")?.addEventListener("change", async (e)
   }
 });
 
-document.getElementById("json-import-btn").addEventListener("click", async () => {
+document.getElementById("json-import-btn").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
   const raw = document.getElementById("json-input").value.trim();
   if (!raw) {
     alert("請貼上內容");
     return;
   }
-  let res;
+  button.disabled = true;
   try {
-    const payload = JSON.parse(raw);
-    res = await api("/api/tickets/import-json", {
-      method: "POST",
-      body: JSON.stringify({ payload }),
-    });
-  } catch {
-    res = await api("/api/tickets/import-text", {
-      method: "POST",
-      body: JSON.stringify({ text: raw }),
-    });
-  }
+  let payload;
+  try { payload = JSON.parse(raw); } catch { payload = undefined; }
+  const asNote = document.getElementById('import-as-note').checked;
+  const res = payload !== undefined && !asNote
+    ? await api('/api/tickets/import-json', {method: 'POST', body: JSON.stringify({payload})})
+    : await api('/api/tickets/import-text', {method: 'POST', body: JSON.stringify({text: raw, as_note: asNote})});
   importPreviewItems = res.items || [];
   const s = res.summary || {};
   document.getElementById("import-summary").textContent =
     `總數 ${s.total || 0}，可新增 ${s.new || 0}，重複 ${s.duplicate || 0}，略過 ${s.skipped || 0}`;
   renderImportEditTable(importPreviewItems);
+  } catch (error) { document.getElementById('import-summary').textContent = error.message; }
+  finally { button.disabled = false; }
 });
 
 document.getElementById("delete-used-btn")?.addEventListener("click", async () => {
@@ -994,14 +896,15 @@ document.getElementById("delete-used-btn")?.addEventListener("click", async () =
   await loadTickets(true);
 });
 
-document.getElementById("json-save-all-btn").addEventListener("click", async () => {
+document.getElementById("json-save-all-btn").addEventListener("click", async (event) => {
+  const button = event.currentTarget;
   const rows = [...document.querySelectorAll("#import-edit-table tr[data-temp-id]")];
   const commitItems = [];
   rows.forEach((tr) => {
     const picked = tr.querySelector(".pick-row")?.checked;
     if (!picked) return;
     const body = { remaining_amount: null, barcode_text: null, barcode_text_2: null, insert_date: null, expiry_note: null };
-    tr.querySelectorAll("input[data-f]").forEach((inp) => {
+    tr.querySelectorAll("input[data-f], textarea[data-f]").forEach((inp) => {
       let v = inp.value;
       if (inp.dataset.f === "face_value") v = v === "" ? null : parseFloat(v);
       if (inp.dataset.f === "expires_at") v = v || null;
@@ -1013,6 +916,7 @@ document.getElementById("json-save-all-btn").addEventListener("click", async () 
     body.barcode_text_2 = src.barcode_text_2 || null;
     body.insert_date = src.insert_date || null;
     body.expiry_note = src.expiry_note || null;
+    if (src.note_text !== null && src.note_text !== undefined && body.note_text === undefined) body.note_text = src.note_text;
     const expiryBtn = tr.querySelector(".expiry-toggle");
     body.no_expiry = expiryBtn?.dataset.noExpiry === "1";
     if (body.no_expiry) body.expires_at = null;
@@ -1020,6 +924,16 @@ document.getElementById("json-save-all-btn").addEventListener("click", async () 
   });
   if (!commitItems.length) {
     alert("沒有勾選要儲存的項目");
+    return;
+  }
+  button.disabled = true;
+  try {
+  if (window.ticketExchange?.isAuxiliary) {
+    await window.ticketAuxiliary.submitItems(commitItems);
+    document.getElementById('import-summary').textContent = '已送交 Main 審核';
+    importPreviewItems = [];
+    document.getElementById('import-edit-table').replaceChildren();
+    button.classList.add('hidden');
     return;
   }
   const res = await api("/api/tickets/import-json-commit", {
@@ -1037,71 +951,8 @@ document.getElementById("json-save-all-btn").addEventListener("click", async () 
   document.getElementById("import-edit-table").innerHTML = "";
   document.getElementById("json-save-all-btn").classList.add("hidden");
   await loadTickets(true);
-});
-
-document.getElementById("manual-form").addEventListener("submit", async (e) => {
-  e.preventDefault();
-  const fd = new FormData(e.target);
-  const fileInput = document.getElementById("manual-image");
-  const file = pastedImageFile || fileInput.files[0];
-  const barcodeText = (fd.get("barcode_text") || "").toString().trim();
-  // 至少要有條碼文字或圖片
-  if (!barcodeText && !file) {
-    alert("請輸入條碼文字或貼上/選取圖片");
-    return;
-  }
-  const body = {
-    name: fd.get("name"),
-    brand_tag: fd.get("brand_tag") || "其他",
-    barcode_text: barcodeText || null,
-    insert_date: fd.get("insert_date") || todayIso(),
-    expires_at: fd.get("expires_at") || null,
-    face_value: fd.get("face_value") ? parseFloat(fd.get("face_value")) : null,
-    source: "manual_text",
-    no_expiry: !fd.get("expires_at") && !fd.get("insert_date"),
-  };
-  let created;
-  if (window.ticketExchange?.isAuxiliary) {
-    try {
-      await window.ticketAuxiliary.submitTicket(body, file);
-      e.target.reset();
-      clearImagePreview();
-      document.querySelector('.tab[data-tab="settings"]').click();
-    } catch (error) { alert(error.message); }
-    return;
-  }
-  if (file && !body.barcode_text) {
-    const q = new URLSearchParams({
-      name: body.name,
-      brand_tag: body.brand_tag,
-    });
-    if (body.insert_date) q.set("insert_date", body.insert_date);
-    if (body.expires_at) q.set("expires_at", body.expires_at);
-    if (body.face_value != null) q.set("face_value", body.face_value);
-    const form = new FormData();
-    form.append("file", file);
-    created = await api(`/api/tickets/with-image?${q}`, { method: "POST", body: form });
-  } else {
-    created = await api("/api/tickets", { method: "POST", body: JSON.stringify(body) });
-    if (file) {
-      const form = new FormData();
-      form.append("file", file);
-      await api(`/api/tickets/${created.id}/image`, { method: "POST", body: form });
-    }
-  }
-  e.target.reset();
-  clearImagePreview();
-  await loadTickets(true);
-  document.querySelector('.tab[data-tab="list"]').click();
-});
-
-const pasteZone = document.getElementById("paste-zone");
-pasteZone.addEventListener("paste", (e) => {
-  const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith("image/"));
-  if (!item) return;
-  e.preventDefault();
-  const file = item.getAsFile();
-  setImagePreviewFromFile(file, "paste");
+  } catch (error) { document.getElementById('import-summary').textContent = error.message; }
+  finally { button.disabled = false; }
 });
 
 if (token) {
@@ -1109,105 +960,7 @@ if (token) {
   loadTickets(true).catch(logout);
 }
 
-function getUniqueTicketNames() {
-  const map = new Map();
-  tickets.forEach((t) => {
-    const n = (t.name || "").trim();
-    if (!n) return;
-    map.set(n, (map.get(n) || 0) + 1);
-  });
-  return [...map.keys()].sort((a, b) => a.localeCompare(b));
-}
-
-function getMostCommonBrandTagForName(name) {
-  const target = (name || "").trim();
-  if (!target) return "";
-  const counts = new Map();
-  tickets.forEach((t) => {
-    if (((t.name || "").trim() || "") !== target) return;
-    const tag = (t.brand_tag || "").trim();
-    if (!tag) return;
-    counts.set(tag, (counts.get(tag) || 0) + 1);
-  });
-  let best = "";
-  let bestCount = 0;
-  counts.forEach((c, tag) => {
-    if (c > bestCount) {
-      best = tag;
-      bestCount = c;
-    }
-  });
-  return best;
-}
-
-function showNameSuggest(filter = "") {
-  const panel = document.getElementById("name-suggest");
-  if (!panel) return;
-  const q = (filter || "").toLowerCase();
-  const names = getUniqueTicketNames()
-    .filter((n) => (q ? n.toLowerCase().includes(q) : true))
-    .slice(0, 30);
-  panel.innerHTML = "";
-  if (!names.length) {
-    const div = document.createElement("div");
-    div.className = "suggest-empty";
-    div.textContent = "沒有建議";
-    panel.appendChild(div);
-  } else {
-    names.forEach((n) => {
-      const div = document.createElement("div");
-      div.className = "suggest-item";
-      div.textContent = n;
-      div.addEventListener("click", () => {
-        const input = document.getElementById("manual-name");
-        input.value = n;
-        const brandInput = document.querySelector('#manual-form input[name="brand_tag"]');
-        const bestTag = getMostCommonBrandTagForName(n);
-        if (brandInput && bestTag) brandInput.value = bestTag;
-        hideNameSuggest();
-      });
-      panel.appendChild(div);
-    });
-  }
-  panel.classList.remove("hidden");
-  nameSuggestOpen = true;
-}
-
-function hideNameSuggest() {
-  const panel = document.getElementById("name-suggest");
-  if (!panel) return;
-  panel.classList.add("hidden");
-  nameSuggestOpen = false;
-}
-
-function wireNameSuggest() {
-  const input = document.getElementById("manual-name");
-  const panel = document.getElementById("name-suggest");
-  if (!input || !panel) return;
-  input.addEventListener("focus", () => showNameSuggest(input.value));
-  input.addEventListener("input", () => showNameSuggest(input.value));
-  input.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") {
-      hideNameSuggest();
-      input.blur();
-    }
-  });
-  document.addEventListener(
-    "pointerdown",
-    (e) => {
-      if (!nameSuggestOpen) return;
-      if (panel.contains(e.target) || input.contains(e.target)) return;
-      hideNameSuggest();
-    },
-    true
-  );
-}
-
-// 預設手動新增日期為今天
 document.addEventListener("DOMContentLoaded", () => {
-  const input = document.querySelector('#manual-form input[name="insert_date"]');
-  if (input && !input.value) input.value = todayIso();
-  wireNameSuggest();
   document.querySelector(`input[name="bc-type"][value="${storedBcType}"]`)?.click();
   const hideChk = document.getElementById("hide-used-chk");
   if (hideChk) hideChk.checked = storedHideUsed;

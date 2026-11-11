@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import html
 from datetime import date, datetime
 from typing import Any
 
@@ -107,10 +108,14 @@ def _split_dual_pair(a: str, b: str) -> tuple[str, str]:
     return (a, b) if len(a) >= len(b) else (b, a)
 
 
-def parse_text_import(text: str) -> list[tuple]:
+def parse_text_import(text: str, as_note: bool = False) -> list[tuple]:
     """含中文的行為標題，僅英數的行為條碼，歸屬於上一個標題。
     標題含「7-11商品卡」者，條碼兩兩一組（一張卡兩組條碼，7100 開頭的長碼當主碼）。
     """
+    text = html.unescape(text).replace('\xa0', ' ')
+    if as_note:
+        lines = text.strip().splitlines()
+        return [(lines[0].strip(), '\n'.join(lines[1:]).strip() or lines[0].strip(), True)] if lines else []
     pairs: list[tuple] = []
     current_title: str | None = None
     buffer: list[str] = []
@@ -118,7 +123,9 @@ def parse_text_import(text: str) -> list[tuple]:
     def flush() -> None:
         nonlocal buffer
         if current_title and buffer:
-            if RE_DUAL_BARCODE_TITLE.search(current_title):
+            if any('http' in line.lower() for line in buffer):
+                pairs.append((current_title, '\n'.join(buffer), True))
+            elif RE_DUAL_BARCODE_TITLE.search(current_title):
                 i = 0
                 while i < len(buffer):
                     if i + 1 < len(buffer):
@@ -137,6 +144,11 @@ def parse_text_import(text: str) -> list[tuple]:
         line = raw.strip()
         if not line:
             continue
+        if 'http' in line.lower():
+            if not current_title:
+                current_title = '筆記'
+            buffer.append(line)
+            continue
         if RE_ALNUM_ONLY.match(line):
             if current_title:
                 buffer.append(line)
@@ -149,10 +161,13 @@ def parse_text_import(text: str) -> list[tuple]:
 
 
 def text_row_to_ticket_fields(
-    title: str, barcode: str, barcode_2: str | None = None
+    title: str, barcode: str, barcode_2: str | bool | None = None
 ) -> dict[str, Any] | None:
     title = (title or "").strip()
     barcode = (barcode or "").strip()
+    if barcode_2 is True or 'http' in barcode.lower():
+        return {'name': title, 'note_text': barcode, 'barcode_text': None, 'barcode_text_2': None,
+                'brand_tag': extract_brand(title), 'no_expiry': True, 'source': 'note'}
     barcode_2 = (barcode_2 or "").strip() or None
     if not title or not barcode:
         return None

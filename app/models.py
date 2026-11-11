@@ -21,6 +21,8 @@ class Ticket(Base):
     barcode_text: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
     # 第二組條碼（例如 7-11 商品卡一張兩組條碼）
     barcode_text_2: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    note_text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    title_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # 圖片條碼路徑（相對 uploads）
     barcode_image: Mapped[str | None] = mapped_column(String(512), nullable=True)
     # 新增/取得日期

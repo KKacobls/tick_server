@@ -17,6 +17,7 @@ class TokenResponse(BaseModel):
 
 class TicketBase(BaseModel):
     name: str
+    note_text: str | None = Field(default=None, max_length=20000)
     barcode_text: str | None = None
     barcode_text_2: str | None = None
     insert_date: date | None = None
@@ -35,6 +36,7 @@ class TicketCreate(TicketBase):
 
 class TicketUpdate(BaseModel):
     name: str | None = None
+    note_text: str | None = Field(default=None, max_length=20000)
     barcode_text: str | None = None
     barcode_text_2: str | None = None
     insert_date: date | None = None
@@ -50,6 +52,7 @@ class TicketUpdate(BaseModel):
 
 class TicketResponse(TicketBase):
     id: int
+    title_image: str | None = None
     barcode_image: str | None = None
     local_state: int
     used_at: datetime | None
@@ -71,10 +74,12 @@ class JsonImportRequest(BaseModel):
 
 class TextImportRequest(BaseModel):
     text: str
+    as_note: bool = False
 
 
 class JsonImportCommitItem(BaseModel):
     name: str
+    note_text: str | None = Field(default=None, max_length=20000)
     barcode_text: str | None = None
     barcode_text_2: str | None = None
     insert_date: date | None = None

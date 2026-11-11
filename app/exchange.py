@@ -123,7 +123,7 @@ class ExchangeMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         path = request.url.path
         if request.method in ("POST", "PATCH", "PUT", "DELETE") and (
-            path.startswith("/api/tickets") or path.startswith("/api/reminders")
+            (path.startswith("/api/tickets") and path not in ('/api/tickets/import-json', '/api/tickets/import-text')) or path.startswith("/api/reminders")
         ):
             with SessionLocal() as db:
                 if runtime(db).mode == "client":
@@ -193,18 +193,19 @@ def snapshot(db: Session, compact: bool = False) -> dict:
     attachments = {}
     size = 0
     for item in items:
-        name = item.get("barcode_image")
-        if not name or name in attachments:
-            continue
-        if Path(name).name != name:
-            raise HTTPException(409, "票券圖片路徑不合法，請先修正圖片")
-        image = UPLOADS / name
-        if not image.is_file():
-            raise HTTPException(409, "票券圖片遺失，無法產生完整匯出")
-        size += image.stat().st_size
-        if size > MAX_BYTES // 2:
-            raise HTTPException(413, "圖片總量超過可攜式匯出的上限")
-        attachments[name] = base64.b64encode(image.read_bytes()).decode()
+        for field in ('barcode_image', 'title_image'):
+            name = item.get(field)
+            if not name or name in attachments:
+                continue
+            if Path(name).name != name or '\\' in name:
+                raise HTTPException(409, "票券圖片路徑不合法，請先修正圖片")
+            image = UPLOADS / name
+            if not image.is_file():
+                raise HTTPException(409, "票券圖片遺失，無法產生完整匯出")
+            size += image.stat().st_size
+            if size > MAX_BYTES // 2:
+                raise HTTPException(413, "圖片總量超過可攜式匯出的上限")
+            attachments[name] = base64.b64encode(image.read_bytes()).decode()
     payload = {"schema": FORMAT, "server_id": state.server_id, "tickets": items, "attachments": attachments}
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     if len(encoded) > MAX_BYTES:
@@ -242,7 +243,7 @@ def external_snapshot(request: Request, db: Session = Depends(get_db), _=Depends
 
 @router.get("/api/v1/uploads/{filename}")
 def external_image(filename: str, db: Session = Depends(get_db), _=Depends(shared_reader)):
-    if Path(filename).name != filename or not db.query(Ticket).filter_by(barcode_image=filename).first():
+    if Path(filename).name != filename or not db.query(Ticket).filter((Ticket.barcode_image == filename) | (Ticket.title_image == filename)).first():
         raise HTTPException(404)
     path = UPLOADS / filename
     if not path.is_file():
@@ -261,7 +262,7 @@ def export_tickets(format: Literal["json", "zip", "csv", "txt"] = "json", db: Se
         media = 'text/plain; charset=utf-8'
     elif format == "csv":
         output = io.StringIO(newline="")
-        columns = ["sync_uid", "name", "face_value", "insert_date", "expires_at", "brand_tag", "barcode_text", "barcode_text_2", "local_state", "remaining_amount", "group_key"]
+        columns = ["sync_uid", "name", "note_text", "face_value", "insert_date", "expires_at", "brand_tag", "barcode_text", "barcode_text_2", "local_state", "remaining_amount", "group_key"]
         writer = csv.DictWriter(output, fieldnames=columns)
         writer.writeheader()
         for item in result["tickets"]:
@@ -292,6 +293,8 @@ def ticket_text(items):
     for item in items:
         codes = groups.setdefault(item['name'], [])
         codes.extend(str(item[key]) for key in ['barcode_text', 'barcode_text_2'] if item.get(key))
+        if item.get('note_text'):
+            codes.append(item['note_text'])
     return '\n\n'.join('\n'.join([name, *codes]) for name, codes in groups.items())
 
 
@@ -394,6 +397,8 @@ def validate_snapshot(payload: dict):
             if uid in seen_uids:
                 raise ValueError("同一快照不可有重複票券 UID")
             item = TicketResponse.model_validate(row).model_dump(mode="json")
+            from app import notes
+            item = notes.normalize(item)
             if not item["name"].strip() or len(item["name"]) > 512 or len(item["brand_tag"]) > 128:
                 raise ValueError("票券名稱或標籤不合法")
             if item["local_state"] not in (0, 1, 2):
@@ -425,7 +430,7 @@ def validate_snapshot(payload: dict):
             if len(content) > 10 * 1024 * 1024 or size > MAX_BYTES // 2:
                 raise ValueError("圖片超過大小上限")
             images[name] = content
-        if any(item["barcode_image"] and item["barcode_image"] not in images for _, item in validated):
+        if any(item.get(field) and item[field] not in images for _, item in validated for field in ('barcode_image', 'title_image')):
             raise ValueError("快照缺少票券圖片，不進行部分匯入")
         return server_id, validated, images
     except (KeyError, TypeError, ValueError, ValidationError) as exc:
@@ -433,7 +438,7 @@ def validate_snapshot(payload: dict):
 
 
 TICKET_FIELDS = tuple(TicketResponse.model_fields)
-COMPARE_FIELDS = ("name", "brand_tag", "barcode_text", "barcode_text_2", "insert_date", "expires_at", "no_expiry", "expiry_note", "face_value", "remaining_amount", "local_state", "hide_used")
+COMPARE_FIELDS = ("name", "brand_tag", "barcode_text", "barcode_text_2", "note_text", "insert_date", "expires_at", "no_expiry", "expiry_note", "face_value", "remaining_amount", "local_state", "hide_used")
 
 
 def apply_snapshot(db: Session, payload: dict, mirror: bool = False):
@@ -475,6 +480,8 @@ def apply_snapshot(db: Session, payload: dict, mirror: bool = False):
             fields[field] = datetime.fromisoformat(fields[field].replace("Z", "+00:00")).replace(tzinfo=None) if fields[field] else None
         if fields["barcode_image"]:
             fields["barcode_image"] = image_names[fields["barcode_image"]]
+        if fields.get('title_image'):
+            fields['title_image'] = image_names[fields['title_image']]
         if ticket is None:
             ticket = Ticket(**fields)
             db.add(ticket)
@@ -552,6 +559,8 @@ def replace_snapshot(db: Session, payload: dict):
                 fields[field] = datetime.fromisoformat(fields[field].replace('Z', '+00:00')).replace(tzinfo=None) if fields[field] else None
             if fields['barcode_image']:
                 fields['barcode_image'] = image_names[fields['barcode_image']]
+            if fields.get('title_image'):
+                fields['title_image'] = image_names[fields['title_image']]
             db.add(Ticket(**fields))
             db.add(TicketIdentity(ticket_id=fields['id'], sync_uid=uid))
             db.add(SyncLink(source_server=source_id, remote_uid=uid, ticket_id=fields['id']))

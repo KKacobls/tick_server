@@ -65,16 +65,19 @@ def config(db):
 
 
 def validated_payload(body):
+    from app import notes
     payload = body.model_dump(mode='json')
     if len(json.dumps(payload).encode()) > MAX_UPLOAD:
         raise HTTPException(413, '上傳資料超過 4 MB')
     for index, ticket in enumerate(body.tickets):
+        normalized = notes.normalize(ticket.model_dump(mode='json'))
+        payload['tickets'][index] = normalized
         if not ticket.name.strip() or len(ticket.name) > 512 or len(ticket.brand_tag) > 128:
             raise HTTPException(422, '名稱或標籤不合法')
-        if not ticket.barcode_text and str(index) not in body.images:
+        if not ticket.barcode_text and not ticket.note_text and str(index) not in body.images:
             raise HTTPException(422, '票券需要條碼或圖片')
         for code in (ticket.barcode_text, ticket.barcode_text_2):
-            if code and len(code) > 128:
+            if code and not notes.contains_http(code) and len(code) > 128:
                 raise HTTPException(422, '條碼最多 128 字')
         for value in (ticket.face_value, ticket.remaining_amount):
             if value is not None and (not math.isfinite(value) or value < 0):
@@ -171,11 +174,16 @@ def review(request_id: str, decision: str, db: Session = Depends(get_db), _=Depe
             payload = validated_payload(Proposal.model_validate_json(item.payload))
             for index, data in enumerate(payload['tickets']):
                 body = TicketCreate.model_validate(data)
+                if body.note_text is not None and db.query(Ticket).filter_by(name=body.name, note_text=body.note_text).first():
+                    skipped += 1
+                    continue
                 if body.barcode_text and db.query(Ticket).filter_by(barcode_text=body.barcode_text).first():
                     skipped += 1
                     continue
                 fields = body.model_dump()
-                fields['source'] = 'auxiliary_approved'
+                fields['source'] = 'note' if body.note_text is not None else 'auxiliary_approved'
+                from app import notes
+                fields = notes.inherit_image(db, fields)
                 encoded = payload['images'].get(str(index))
                 if encoded:
                     content = base64.b64decode(encoded)

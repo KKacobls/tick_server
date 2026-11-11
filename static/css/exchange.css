@@ -1,6 +1,6 @@
-.drawer-navigation { display: grid; grid-template-columns: 42px minmax(0, 1fr) 42px; align-items: start; gap: 6px; min-width: 0; width: 100%; }
-.drawer-navigation .drawer-bar { min-width: 0; max-width: 100%; overscroll-behavior-inline: contain; scroll-behavior: smooth; }
-.drawer-btn { flex: 0 0 auto; }
+.drawer-navigation { display: block; min-width: 0; width: 100%; }
+.drawer-navigation .drawer-bar { min-width: 0; max-width: 100%; flex-wrap: wrap; overflow: visible; }
+.drawer-btn { flex: 0 1 auto; max-width:100%; white-space:normal; overflow-wrap:anywhere; }
 .drawer-scroll { min-width: 40px; min-height: 40px; margin-top: 3px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; color: var(--text); background: var(--card); font-size: 22px; cursor: pointer; }
 .drawer-scroll:disabled { opacity: .3; cursor: default; }
 .app-main, .tab-panel { min-width: 0; }
@@ -13,7 +13,12 @@
 .exchange-status.error { color: #ff9d9d; }
 .scan-match { outline: 3px solid var(--primary); outline-offset: 2px; }
 .tickets-readonly .ticket-row { cursor: default; }
+.bottom-nav{grid-template-columns:repeat(5,minmax(0,1fr))}
+.note-card{border:1px solid var(--border);border-radius:12px;padding:16px;margin:16px 0;background:var(--card);min-width:0}
+.note-card h3{font-size:1.2rem;margin:0 0 14px;overflow-wrap:anywhere}.note-text{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.8}.note-text a{color:var(--primary);text-decoration:underline;overflow-wrap:anywhere}.note-entry{margin:14px 0;padding-top:12px;border-top:1px solid var(--border)}.note-entry button,.title-image-actions button{margin:8px 8px 0 0}.note-entry textarea{width:100%;font:inherit;min-height:140px}.title-image{display:block;max-width:100%;max-height:240px;object-fit:contain;border-radius:10px;margin:12px auto}.title-image-actions{padding:0 12px 8px}.import-preview{min-width:0;max-width:100%}.import-preview textarea{width:100%;min-width:120px;font:inherit}.import-preview input{min-width:0;max-width:100%}
+@media(max-width:640px){.import-preview table,.import-preview tbody,.import-preview tr,.import-preview td{display:block;width:100%;min-width:0;max-width:100%}.import-preview thead{display:none}.import-preview tr{padding:12px;margin:12px 0;border:1px solid var(--border);border-radius:10px}.import-preview td{border:0;padding:6px 0;overflow-wrap:anywhere}.import-preview td::before{content:attr(data-label);display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px}.import-preview input,.import-preview textarea{width:100%;min-width:0}.import-preview input[type=checkbox]{width:auto}}
 .upload-request{margin:14px 0;padding:12px;border:1px solid var(--border);border-radius:8px}.upload-request pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}.upload-request img{max-width:100%;height:auto}.upload-request button{margin:6px}
+.import-preview .edit-table,.import-preview tbody{display:block;width:100%;min-width:0}.import-preview thead{display:none}.import-preview tr{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:12px;margin:12px 0;border:1px solid var(--border);border-radius:10px}.import-preview td{display:block;min-width:0;border:0;padding:6px 0;overflow-wrap:anywhere}.import-preview td:nth-child(3),.import-preview td:nth-child(4){grid-column:1/-1}.import-preview td::before{content:attr(data-label);display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px}.import-preview input,.import-preview textarea{width:100%;min-width:0}.import-preview input[type=checkbox]{width:auto}
 @media (max-width: 640px) { .exchange-grid { grid-template-columns: minmax(0, 1fr); } }
 @media (prefers-reduced-motion: reduce) { .drawer-navigation .drawer-bar { scroll-behavior: auto; } }
 #share-qr{background:#fff;padding:12px;width:244px;max-width:100%;margin:16px 0}#share-qr img,#share-qr canvas{max-width:100%;height:auto}#share-created label{display:block;margin-top:14px}#share-link,#share-token,#ticket-text-export{width:100%;min-width:0;resize:vertical;overflow-wrap:anywhere}.share-token-row{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;padding:12px 0;border-bottom:1px solid var(--border)}.share-token-row span{overflow-wrap:anywhere;min-width:0}
