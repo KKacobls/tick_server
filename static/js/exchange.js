@@ -27,8 +27,11 @@
     byId("read-only-notice").textContent = lastOpenSync === 'cached'
       ? '輔助：Main 暫時無法更新，顯示本機保留票券。'
       : '輔助：每次開啟向 Main 更新票券。';
-    document.querySelectorAll('#manual-form input, #manual-form button, #delete-used-btn, #json-import-btn, #json-save-all-btn, #snapshot-import-file').forEach((el) => { el.disabled = readOnly; });
-    document.querySelector('.tab[data-tab="manual"]').disabled = readOnly;
+    const canUpload = window.ticketAuxiliary?.canUpload === true;
+    document.querySelectorAll('#manual-form input, #manual-form button').forEach((el) => { el.disabled = readOnly && !canUpload; });
+    document.querySelectorAll('#delete-used-btn, #json-import-btn, #json-save-all-btn, #snapshot-import-file').forEach((el) => { el.disabled = readOnly; });
+    document.querySelector('.tab[data-tab="manual"]').disabled = readOnly && !canUpload;
+    document.querySelector('#manual-form button[type="submit"]').textContent = readOnly ? '送交 Main 審核' : '新增票券';
     byId("pull-now-btn").disabled = serverMode !== "client";
   }
 
@@ -88,6 +91,7 @@
     byId("main-server-username").value = "";
     byId("main-server-password").value = "";
     await initialize();
+    await window.ticketAuxiliary?.initialize();
     await loadTickets(true);
     status(lastOpenSync === 'cached' ? '模式已儲存；Main 暫時無法更新，保留本機票券。' : '模式已儲存。');
   }));
@@ -143,14 +147,14 @@
       row?.classList.add("scan-match");
       row?.scrollIntoView({ block: "center", behavior: "smooth" });
       status(`找到 ${matches.length} 張對應票券。掃描不會自動兌換或修改狀態。`);
-    } else if (!window.ticketExchange.readOnly) {
+    } else if (!window.ticketExchange.readOnly || window.ticketAuxiliary?.canUpload) {
       document.querySelector('.tab[data-tab="manual"]').click();
       document.querySelector('#manual-form input[name="barcode_text"]').value = code;
       status("尚未找到票券，已將條碼填入新增表單，填寫後再手動儲存。");
     } else status("目前票券中沒有此條碼，請向 main server 更新後重試。", true);
   }
   window.acceptTicketScan = acceptScan;
-  window.ticketExchange = { exportFile, initialize, get readOnly() { return serverMode === "client"; }, get isAuxiliary() { return serverMode === 'client'; } };
+  window.ticketExchange = { exportFile, initialize, applyPermissions, get readOnly() { return serverMode === "client"; }, get isAuxiliary() { return serverMode === 'client'; } };
   document.addEventListener('ticket-sync-status', (event) => { lastOpenSync = event.detail; applyPermissions(); });
   function refreshOnReturn() {
     if (token && serverMode === 'client') loadTickets(true).catch((error) => status(error.message, true));

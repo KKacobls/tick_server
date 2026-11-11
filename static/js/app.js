@@ -75,6 +75,7 @@ function logout() {
   document.dispatchEvent(new Event('ticket-auth-ended'));
   document.getElementById("app-view").classList.add("hidden");
   document.getElementById("login-view").classList.remove("hidden");
+  fetch('/api/auth/logout', {method: 'POST'}).finally(() => location.replace('/login'));
 }
 
 function showApp() {
@@ -1060,6 +1061,15 @@ document.getElementById("manual-form").addEventListener("submit", async (e) => {
     no_expiry: !fd.get("expires_at") && !fd.get("insert_date"),
   };
   let created;
+  if (window.ticketExchange?.isAuxiliary) {
+    try {
+      await window.ticketAuxiliary.submitTicket(body, file);
+      e.target.reset();
+      clearImagePreview();
+      document.querySelector('.tab[data-tab="settings"]').click();
+    } catch (error) { alert(error.message); }
+    return;
+  }
   if (file && !body.barcode_text) {
     const q = new URLSearchParams({
       name: body.name,

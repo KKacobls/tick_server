@@ -71,7 +71,7 @@
       name: byId('share-name').value.trim(), expires_at: new Date(value).toISOString(),
     })});
     const url = new URL('/share', location.origin);
-    url.hash = new URLSearchParams({token: item.token}).toString();
+    url.search = new URLSearchParams({token: item.token}).toString();
     byId('share-link').value = url.href;
     byId('share-token').value = item.token;
     byId('share-qr').replaceChildren();

@@ -7,7 +7,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from apscheduler.schedulers.background import BackgroundScheduler
-from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, Response
+from fastapi import Depends, FastAPI, File, HTTPException, Query, UploadFile, Response, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -18,6 +18,7 @@ from sqlalchemy.orm import Session
 from app import import_service
 from app import exchange
 from app import sharing
+from app import pages, auxiliary
 from app.auth import create_access_token, get_current_user, verify_password
 from app.config import ROOT, settings
 from app.database import Base, SessionLocal, engine, get_db
@@ -70,6 +71,9 @@ app.add_middleware(NoCacheForStatic)
 app.add_middleware(exchange.ExchangeMiddleware)
 app.include_router(exchange.router)
 app.include_router(sharing.router)
+app.include_router(pages.router)
+app.include_router(auxiliary.router)
+app.add_middleware(pages.PageGate)
 
 
 def _migrate_add_missing_columns():
@@ -116,12 +120,15 @@ def _job_reminders():
 
 
 @app.post("/api/auth/login", response_model=TokenResponse)
-def login(body: LoginRequest):
+def login(body: LoginRequest, response: Response, request: Request):
     if body.username != settings.auth.username or not verify_password(
         body.password, settings.auth.password
     ):
         raise HTTPException(status_code=401, detail="Invalid credentials")
-    return TokenResponse(access_token=create_access_token(body.username))
+    token = create_access_token(body.username)
+    response.set_cookie(pages.COOKIE, token, max_age=72 * 3600, httponly=True,
+                        secure=request.url.scheme == 'https', samesite='strict')
+    return TokenResponse(access_token=token)
 
 
 @app.get("/api/tickets", response_model=list[TicketResponse])
@@ -472,10 +479,6 @@ if STATIC_DIR.is_dir():
     @app.get("/")
     def index_page():
         return FileResponse(STATIC_DIR / "index.html")
-
-    @app.get('/share')
-    def share_page():
-        return FileResponse(STATIC_DIR / 'share.html', headers={'Referrer-Policy': 'no-referrer'})
 
     app.mount("/css", StaticFiles(directory=str(STATIC_DIR / "css")), name="css")
     app.mount("/js", StaticFiles(directory=str(STATIC_DIR / "js")), name="js")

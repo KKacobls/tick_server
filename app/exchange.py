@@ -187,7 +187,7 @@ def ticket_items(db: Session) -> list[dict]:
     return [ticket_to_dict(ticket) | {"sync_uid": identities[ticket.id].sync_uid} for ticket in records]
 
 
-def snapshot(db: Session) -> dict:
+def snapshot(db: Session, compact: bool = False) -> dict:
     state = runtime(db)
     items = ticket_items(db)
     attachments = {}
@@ -209,6 +209,12 @@ def snapshot(db: Session) -> dict:
     encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
     if len(encoded) > MAX_BYTES:
         raise HTTPException(413, "票券快照超過大小上限")
+    if compact:
+        # TicketResponse fills nullable/default fields back in during synchronization.
+        required = {key for key, field in TicketResponse.model_fields.items() if field.is_required()}
+        payload['tickets'] = [{key: value for key, value in item.items() if value is not None or key in required}
+                              for item in items]
+        return payload
     return payload | {"revision": hashlib.sha256(encoded).hexdigest(), "generated_at": datetime.utcnow().isoformat() + "Z",
                       "ticket_count": len(items), "groups": group_tickets(items)}
 
@@ -226,11 +232,11 @@ def external_tickets(request: Request, response: APIResponse, grouped: bool = Fa
 def external_snapshot(request: Request, db: Session = Depends(get_db), _=Depends(shared_reader)):
     db.rollback()
     sync_status = refresh_auxiliary_on_open()
-    result = snapshot(db)
-    etag = '"' + result["revision"] + '"'
+    result = snapshot(db, compact=True)
+    etag = '"' + hashlib.sha256(json.dumps(result, sort_keys=True).encode()).hexdigest() + '"'
     if request.headers.get("if-none-match") == etag:
         return Response(status_code=304, headers={"ETag": etag, "Cache-Control": "no-store", 'X-Ticket-Sync': sync_status})
-    request.state.exchange_ticket_count = result["ticket_count"]
+    request.state.exchange_ticket_count = len(result['tickets'])
     return JSONResponse(result, headers={"ETag": etag, "Cache-Control": "no-store", 'X-Ticket-Sync': sync_status})
 
 
@@ -339,13 +345,14 @@ def write_settings(body: SettingsPatch, db: Session = Depends(get_db), _: str = 
     item = runtime(db)
     entered_url = (body.upstream_url or '').strip()
     parts = urlsplit(entered_url)
-    if entered_url and (parts.scheme not in ('https', 'http') or not parts.hostname or parts.username or parts.password or parts.query):
+    query = parse_qs(parts.query)
+    if entered_url and (parts.scheme not in ('https', 'http') or not parts.hostname or parts.username or parts.password or set(query) - {'token'}):
         raise HTTPException(422, '來源網址必須是 http(s) 分享網址')
     if parts.path.rstrip('/') not in ('', '/share', '/api/v1/snapshot'):
         raise HTTPException(422, '請貼上對方產生的分享網址')
     url = f'{parts.scheme}://{parts.netloc}' if entered_url else ''
-    shared = parse_qs(parts.fragment).get('token', [''])[0]
-    if parts.fragment and (not shared.startswith('tkt_') or len(shared) > 512):
+    shared = query.get('token', parse_qs(parts.fragment).get('token', ['']))[0]
+    if (parts.fragment or parts.query) and (not shared.startswith('tkt_') or len(shared) > 512):
         raise HTTPException(422, '分享網址缺少有效的讀取 Token')
     username = (body.upstream_username or '').strip()
     password = body.upstream_password.get_secret_value() if body.upstream_password else ''

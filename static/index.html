@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="/css/style.css" />
   <link rel="stylesheet" href="/css/exchange.css" />
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+  <script src="/js/vendor/JsBarcode.all.min.js"></script>
   <script src="/js/vendor/qrcode.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/cropperjs@1.6.2/dist/cropper.min.js"></script>
 </head>
@@ -27,7 +27,6 @@
           </svg>
         </div>
         <h1>票券管理</h1>
-        <p class="login-tagline">整理、掃描、兌換 — 一站搞定</p>
       </div>
       <div class="login-fields">
         <label class="field-label" for="login-user">帳號</label>
@@ -177,11 +176,18 @@
           <div class="exchange-grid">
             <label>模式<select id="server-mode"><option value="main">Main（預設）</option><option value="client">輔助</option></select></label>
             <label>背景更新間隔（秒）<input id="sync-interval" type="number" min="30" max="86400" value="60" /></label>
-            <label class="exchange-wide">Main 分享網址<input id="main-server-url" type="url" placeholder="https://Main網址/share#token=…" autocomplete="off" /></label>
+            <label class="exchange-wide">Main 分享網址<input id="main-server-url" type="url" placeholder="https://Main網址/share?token=…" autocomplete="off" /></label>
             <details class="exchange-wide"><summary>使用帳號密碼同步</summary><div class="exchange-grid"><label>Main 帳號<input id="main-server-username" autocomplete="off" /></label><label>Main 密碼<input id="main-server-password" type="password" autocomplete="new-password" /></label></div></details>
           </div>
           <div class="btn-row"><button id="save-sync-btn" type="button" class="btn-primary">儲存模式</button><button id="pull-now-btn" type="button" class="btn-secondary">立即向 Main 更新</button></div>
         </div>
+        <section class="settings-group" id="auxiliary-panel">
+          <h3 class="settings-label">輔助上傳</h3>
+          <label class="chk-card"><input id="auxiliary-enabled" type="checkbox"><span id="auxiliary-enabled-label">接受輔助上傳申請</span></label>
+          <p id="auxiliary-status" role="status"></p>
+          <details id="auxiliary-review"><summary>待審上傳 <span id="auxiliary-count">0</span></summary><button id="auxiliary-refresh" type="button" class="btn-secondary">重新整理</button><div id="auxiliary-requests"></div></details>
+          <div id="auxiliary-drafts" class="hidden"></div>
+        </section>
         <section class="settings-group" id="sharing-panel">
           <h3 class="settings-label">分享票券</h3>
           <div class="exchange-grid"><label>名稱（選填）<input id="share-name" maxlength="128" /></label><label>有效期限<input id="share-expiry" type="datetime-local" required /></label></div>
@@ -281,5 +287,6 @@
   <script src="/js/app.js"></script>
   <script src="/js/exchange.js"></script>
   <script src="/js/sharing.js"></script>
+  <script src="/js/auxiliary.js"></script>
 </body>
 </html>
